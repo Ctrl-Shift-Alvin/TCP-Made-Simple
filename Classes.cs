@@ -26,45 +26,45 @@ namespace AlvinSoft.TcpMs;
     /// Version, ConnectionTestTries, EncryptionEnabled
 /// </code>
 /// </remarks>
-public class ServerSettings() {
+public class ServerSettings(string password) {
 
     #region Public_Fields
     /// <summary>The current server version</summary>
     public const int CurrentVersion = 0;
 
     /// <summary>-1 for empty settings</summary>
-    public int Version = CurrentVersion;
+    public int Version { get; internal set; } = CurrentVersion;
 
     /// <summary>The amount of test iterations when testing a client's connection.</summary>
-    public byte ConnectionTestTries = 3;
+    public byte ConnectionTestTries { get; internal set; } = 3;
 
     /// <summary>Encrypt the data in the packages.</summary>
-    public bool EncryptionEnabled = true;
+    public bool EncryptionEnabled { get; internal set; } = true;
 
     #endregion
 
     /// <summary>The password used for encryption.</summary>
-    /// <remarks>Irrelevant if <see cref="EncryptionEnabled"/> is false</remarks>
-    public SecurePassword Password;
+    /// <remarks>Irrelevant if <see cref="EncryptionEnabled"/> is false.</remarks>
+    public SecurePassword Password { get; internal set; } = new(password ?? string.Empty);
 
     /// <summary>The maximum amount of clients allowed at the same time.</summary>
     /// <remarks>This field is not disclosed to the clients</remarks>
-    public int MaxClients = 15;
+    public int MaxClients { get; internal set; } = 15;
 
     /// <summary>The number of times a client can declare panic before deemed unstable and disconnected.</summary>
-    public int MaxPanicsPerClient = 5;
+    public int MaxPanicsPerClient { get; internal set; } = 5;
         
     /// <summary>The interval at which to ping clients.</summary>
     /// <remarks>Set to 0 to disable pinging</remarks>
-    public int PingIntervalMs = 10000;
+    public int PingIntervalMs { get; internal set; } = 10000;
 
     /// <summary>The maximum time to wait for a pong before disconnecting a client.</summary>
     /// <remarks>Must be lower than <see cref="PingIntervalMs"/>. Irrelevant if <see cref="PingIntervalMs"/> is 0 or less.</remarks>
-    public int PingTimeoutMs = 8000;
+    public int PingTimeoutMs { get; internal set; } = 8000;
 
     /// <summary>The maximum time to wait before cancelling an async read operation after receiving the first byte.</summary>
     /// <remarks>The provided cancellation token is used only for the first byte. After that a new one is created.</remarks>
-    public int ReceiveTimeoutMs = 2000;
+    public int ReceiveTimeoutMs { get; internal set; } = 2000;
 
     /// <summary>Import an instance that was exported using <see cref="GetBytes()"/>.</summary>
     public void Update(byte[] data) {
@@ -114,7 +114,7 @@ public class ServerSettings() {
     ///     Version = -1
     /// };
     /// </code></value>
-    public static ServerSettings None => new() {
+    public static ServerSettings None => new(null) {
         Version = -1
     };
 
