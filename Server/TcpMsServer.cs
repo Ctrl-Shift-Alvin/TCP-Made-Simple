@@ -106,7 +106,7 @@ public partial class TcpMsServer(IPAddress address, ushort port, ServerSettings 
         foreach (Client client in Clients.Values)
             tasks.Add(client.SendPackageAsync(new Package(Package.PackageTypes.Disconnect)));
 
-        Task.WaitAll([.. tasks], TimeoutCancellationToken);
+        Task.WaitAll([.. tasks], TimeoutToken);
 
         foreach (Client client in Clients.Values)
             client.Close();
@@ -263,7 +263,7 @@ public partial class TcpMsServer(IPAddress address, ushort port, ServerSettings 
         EnsureIsListening();
 
         byte[] parsedData = BitConverter.GetBytes(data);
-        EncryptIfNeccessary(ref parsedData);
+        EncryptIfNecessary(ref parsedData);
         await client.SendPackageAsync(new(Package.PackageTypes.Data, Package.DataTypes.Bool, parsedData));
     }
 
@@ -273,7 +273,7 @@ public partial class TcpMsServer(IPAddress address, ushort port, ServerSettings 
 
         byte[] parsedData = new byte[4];
         BinaryPrimitives.WriteInt32BigEndian(parsedData, data);
-        EncryptIfNeccessary(ref parsedData);
+        EncryptIfNecessary(ref parsedData);
         await client.SendPackageAsync(new(Package.PackageTypes.Data, Package.DataTypes.Int, parsedData));
     }
 
@@ -282,7 +282,7 @@ public partial class TcpMsServer(IPAddress address, ushort port, ServerSettings 
         EnsureIsListening();
 
         byte[] parsedData = Encoding.Unicode.GetBytes(data);
-        EncryptIfNeccessary(ref parsedData);
+        EncryptIfNecessary(ref parsedData);
         await client.SendPackageAsync(new(Package.PackageTypes.Data, Package.DataTypes.String, parsedData));
     }
 
@@ -290,7 +290,7 @@ public partial class TcpMsServer(IPAddress address, ushort port, ServerSettings 
 
         EnsureIsListening();
 
-        EncryptIfNeccessary(ref data);
+        EncryptIfNecessary(ref data);
         await client.SendPackageAsync(new(Package.PackageTypes.Data, Package.DataTypes.Blob, data));
     }
     #endregion

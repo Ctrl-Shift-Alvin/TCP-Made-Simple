@@ -33,7 +33,7 @@ partial class TcpMsServer {
     public bool IsAllowingConnections => ListenerCancellationTokenSource != null && !ListenerCancellationTokenSource.IsCancellationRequested;
     private CancellationTokenSource ListenerCancellationTokenSource;
 
-    private static CancellationToken TimeoutCancellationToken => new CancellationTokenSource(2000).Token;
+    private static CancellationToken TimeoutToken => new CancellationTokenSource(2000).Token;
 
     #endregion
 
@@ -57,19 +57,18 @@ partial class TcpMsServer {
         ListenerCancellationTokenSource = new();
 
         while(ClientCountOk() && !ListenerCancellationTokenSource.IsCancellationRequested) {
+
             TcpClient client = await Listener.AcceptTcpClientAsync(ListenerCancellationTokenSource.Token); //accept connection
+
             if (client != null)
                 _ = Task.Run(() => ConnectionHandler(client)); //handle connection
         }
 
-        ListenerCancellationTokenSource.Cancel();
+        ListenerCancellationTokenSource?.Cancel();
 
     }
 
     private async Task ConnectionHandler(TcpClient tcpClient) {
-
-        if (!ClientCountOk())
-            return;
 
         Client client = new(GenerateID(), Settings, tcpClient);
         Clients.TryAdd(client.ID, client);
@@ -99,6 +98,7 @@ partial class TcpMsServer {
 
         start:
         try {
+
             while (IsListening && client.IsConnected) {
 
                 Package package;
@@ -131,7 +131,7 @@ partial class TcpMsServer {
                     break;
 
                     case Package.PackageTypes.Data: {
-                        HandlePackage(client, package);
+                        HandleDataPackage(client, package);
                     }
                     break;
 
@@ -174,20 +174,20 @@ partial class TcpMsServer {
 
         try {
 
-            using RsaEncryption rsa = new();
+            RSAEncryption rsa = new();
 
             //send rsa public key, which the client uses to encrypt the password
-            byte[] publicKey = rsa.GetPublicKey().GetBytesPackage();
+            byte[] publicKey = rsa.Key.ExportPublicKey();
             await client.SendPackageAsync(new Package(Package.PackageTypes.AuthRSAPublicKey, Package.DataTypes.Blob, publicKey, false));
 
             //receive encrypted password
-            var encryptedPassword = await client.ReceivePackageAsync(Package.PackageTypes.AuthEncryptedPassword);
+            var encryptedPassword = await client.ReceivePackageAsync(Package.PackageTypes.AuthEncryptedPassword, TimeoutToken);
 
             //decrypt password
             string password = rsa.DecryptString(encryptedPassword.Data);
 
             //compare password
-            if (password != null && Encryption.Password == password) {
+            if (password != null && Encryption.Password.Equals(password)) {
                 await client.SendPackageAsync(new Package(Package.PackageTypes.AuthSuccess));
                 return true;
             } else {
@@ -207,9 +207,9 @@ partial class TcpMsServer {
         try {
 
             //read rsa key, so the iv and salt can be encrypted
-            var clientRsaPubKeyPackage = await client.ReceivePackageAsync(Package.PackageTypes.EncrRSAPublicKey, new CancellationTokenSource(2000).Token);
+            var clientRsaPubKeyPackage = await client.ReceivePackageAsync(Package.PackageTypes.EncrRSAPublicKey, TimeoutToken);
 
-            using var rsa = new RsaEncryption(new RsaEncryption.RsaPublicKey(clientRsaPubKeyPackage.Data));
+            RSAEncryption rsa = new(RSAKey.ImportPublicKey(clientRsaPubKeyPackage.Data));
 
             //encrypt and send iv
             byte[] encIv = rsa.EncryptBytes(Encryption.IV);
@@ -264,22 +264,19 @@ partial class TcpMsServer {
 
         for (int i = 0; i < Settings.ConnectionTestTries; i++) {
 
-            byte[] test = RandomGenerator.GenerateBytes(RandomGenerator.Next(1, 6));
-            byte[] data;
-            if (Settings.EncryptionEnabled)
-                data = Encryption.EncryptBytes(test);
-            else
-                data = test;
+            //generate random bytes of random length from 1 to 5
+            byte[] test = RandomGen.GetBytes(Random.Shared.Next(1, 6));
+            EncryptIfNecessary(ref test);
 
-            await client.SendPackageAsync(new Package(Package.PackageTypes.Test, Package.DataTypes.Blob, data, false));
+            //send the test package
+            await client.SendPackageAsync(new Package(Package.PackageTypes.Test, Package.DataTypes.Blob, test, false));
 
-            Package response = await client.ReceivePackageAsync(Package.PackageTypes.Test, TimeoutCancellationToken);
+            //read the response
+            Package response = await client.ReceivePackageAsync(Package.PackageTypes.Test, TimeoutToken);
 
-            byte[] responseData;
-            if (Settings.EncryptionEnabled)
-                responseData = Encryption.DecryptBytes(response.Data);
-            else
-                responseData = response.Data;
+            //decrypt if neccessary
+            byte[] responseData = response.Data;
+            DecryptIfNecessary(ref responseData);
 
             if (responseData.Length == test.Length && responseData.Any(k => test.Any(l => l == k))) {
                 continue;
@@ -324,7 +321,7 @@ partial class TcpMsServer {
     }
 
     /// <summary>Processes data packages and calls the relevant event</summary>
-    private void HandlePackage(Client client, Package package) {
+    private void HandleDataPackage(Client client, Package package) {
 
         switch (package.DataType) {
 
@@ -401,9 +398,18 @@ partial class TcpMsServer {
         return id;
     }
 
-    private bool EncryptIfNeccessary(ref byte[] buffer) {
+    private bool EncryptIfNecessary(ref byte[] buffer) {
         if (Settings.EncryptionEnabled) {
             buffer = Encryption.EncryptBytes(buffer);
+            return true;
+        }
+        return false;
+    }
+
+    private bool DecryptIfNecessary(ref byte[] buffer) {
+
+        if (Settings.EncryptionEnabled) {
+            buffer = Encryption.DecryptBytes(buffer);
             return true;
         }
         return false;

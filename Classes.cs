@@ -6,6 +6,7 @@ using System.Threading;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using AlvinSoft.Cryptography;
 
 namespace AlvinSoft.TcpMs;
 
@@ -44,7 +45,7 @@ public class ServerSettings() {
 
     /// <summary>The password used for encryption.</summary>
     /// <remarks>Irrelevant if <see cref="EncryptionEnabled"/> is false</remarks>
-    public string Password;
+    public SecurePassword Password;
 
     /// <summary>The maximum amount of clients allowed at the same time.</summary>
     /// <remarks>This field is not disclosed to the clients</remarks>
@@ -133,7 +134,7 @@ internal class Client(byte[] id, ServerSettings settings, TcpClient client) {
 
     /// <summary>Checks if the underlying TcpClient is still connected</summary>
     /// <returns>true if the client is still connected; otherwise false</returns>
-    public bool IsConnected => Tcp.Connected;
+    public bool IsConnected => !CancelTokenSource.IsCancellationRequested && Tcp.Connected;
 
     internal int PanicCount { get; private set; } = 0;
 

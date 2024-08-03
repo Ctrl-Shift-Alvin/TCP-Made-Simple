@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Threading;
 using System.Net.Sockets;
 using System.Buffers.Binary;
+using AlvinSoft.Cryptography;
 
 namespace AlvinSoft.TcpMs;
 
@@ -73,7 +74,7 @@ public partial class TcpMsClient(string hostname, ushort port) {
     public bool TryConnect(string password = null) {
 
         Settings = ServerSettings.None;
-        Settings.Password = password;
+        Settings.Password = new(password);
 
         try {
 
@@ -97,7 +98,7 @@ public partial class TcpMsClient(string hostname, ushort port) {
     public async Task<bool> TryConnectAsync(string password = null, CancellationToken cancellationToken = default) {
 
         Settings = ServerSettings.None;
-        Settings.Password = password;
+        Settings.Password = new(password);
 
         try {
 

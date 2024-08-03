@@ -42,20 +42,20 @@ partial class TcpMsClient {
 
         try {
 
-
             Package settingsPackage = await Client.ReceivePackageAsync(Package.PackageTypes.NewSettings, TimeoutToken);
             Settings.Update(settingsPackage.Data);
 
             if (Settings.EncryptionEnabled) {
 
                 if (!await Authenticate()) {
-                    await DisconnectAsync();
+                    Close();
                     return false;
                 }
                 await ReceiveEncryption();
 
             }
 
+            //also verifies if the encryption data was received and resends it
             if (await ValidateConnection()) {
                 _ = Task.Run(ListenerLoop);
                 OnConnected();
@@ -153,10 +153,10 @@ partial class TcpMsClient {
             //read public rsa key
             buffer = await Client.ReceivePackageAsync(Package.PackageTypes.AuthRSAPublicKey, TimeoutToken);
 
-            using RsaEncryption rsa = new(new RsaEncryption.RsaPublicKey(buffer.Data));
+            RSAEncryption rsa = new(RSAKey.ImportPublicKey(buffer.Data));
 
             //encrypt and send password using public rsa key
-            byte[] encryptedPassword = rsa.EncryptString(Settings.Password);
+            byte[] encryptedPassword = rsa.EncryptString(Settings.Password.ToString());
             await Client.SendPackageAsync(new Package(Package.PackageTypes.AuthEncryptedPassword, Package.DataTypes.Blob, encryptedPassword, false));
 
             //read result
@@ -170,16 +170,16 @@ partial class TcpMsClient {
 
     }
 
-    /// <summary>Reads the server's encryption and sends an error package if something goes wrong</summary>
+    /// <summary>Reads the server's encryption and sends an error package if something goes wrong.</summary>
     private async Task ReceiveEncryption() {
 
         EnsureIsConnected();
 
         try {
-            using RsaEncryption rsa = new();
+            RSAEncryption rsa = new();
 
             //send public key that the server uses to encrypt encryption data
-            byte[] rsaPublicKey = rsa.GetPublicKey().GetBytesPackage();
+            byte[] rsaPublicKey = rsa.Key.ExportPublicKey();
             await Client.SendPackageAsync(new Package(Package.PackageTypes.EncrRSAPublicKey, Package.DataTypes.Blob, rsaPublicKey, false));
 
             Package iv = await Client.ReceivePackageAsync(Package.PackageTypes.EncrIV, TimeoutToken);
@@ -213,8 +213,8 @@ partial class TcpMsClient {
                 else
                     data = packageBuffer.Data;
 
-                byte[] response = RandomGenerator.GenerateBytes(data.Length);
-                response[RandomGenerator.Next(0, response.Length)] = data[RandomGenerator.Next(0, data.Length)]; //assign random byte from data to random byte in response
+                byte[] response = RandomGen.GetBytes(data.Length);
+                response[Random.Shared.Next(0, response.Length)] = data[Random.Shared.Next(0, data.Length)]; //assign random byte from data to random byte in response
 
                 if (Settings.EncryptionEnabled)
                     data = Encryption.EncryptBytes(response);
@@ -225,7 +225,7 @@ partial class TcpMsClient {
                 await Client.SendPackageAsync(new Package(Package.PackageTypes.Test, Package.DataTypes.Blob, response));
 
                 //read result
-                packageBuffer = await Client.Stream.ReceivePackage(cancellationToken: TimeoutToken);
+                packageBuffer = await Client.ReceivePackageAsync(cancellationToken: TimeoutToken);
                 if (packageBuffer.PackageType == Package.PackageTypes.Error)
                     return false;
             }
@@ -233,7 +233,7 @@ partial class TcpMsClient {
             //if the first run was already performed, set i = 1
             for (int i = firstPackage.HasValue ? 1 : 0; i < Settings.ConnectionTestTries; i++) {
 
-                packageBuffer = await Client.Stream.ReceivePackage(Package.PackageTypes.Test, TimeoutToken);
+                packageBuffer = await Client.ReceivePackageAsync(Package.PackageTypes.Test, TimeoutToken);
 
                 byte[] data;
                 if (Settings.EncryptionEnabled)
@@ -241,8 +241,8 @@ partial class TcpMsClient {
                 else
                     data = packageBuffer.Data;
 
-                byte[] response = RandomGenerator.GenerateBytes(data.Length);
-                response[RandomGenerator.Next(0, response.Length)] = data[RandomGenerator.Next(0, data.Length)]; //assign random byte from data to random byte in response
+                byte[] response = RandomGen.GetBytes(data.Length);
+                response[Random.Shared.Next(0, response.Length)] = data[Random.Shared.Next(0, data.Length)]; //assign random byte from data to random byte in response
 
                 if (Settings.EncryptionEnabled)
                     data = Encryption.EncryptBytes(response);
@@ -250,10 +250,10 @@ partial class TcpMsClient {
                     data = response;
 
                 //send response
-                await Client.Stream.SendPackage(Package.DataTypes.Blob, Package.PackageTypes.Test, response, false);
+                await Client.SendPackageAsync(new Package(Package.PackageTypes.Test, Package.DataTypes.Blob, response, false));
                 
                 //read result
-                packageBuffer = await Client.Stream.ReceivePackage(cancellationToken: TimeoutToken);
+                packageBuffer = await Client.ReceivePackageAsync(cancellationToken: TimeoutToken);
                 if (packageBuffer.PackageType == Package.PackageTypes.Error)
                     return false;
 
@@ -274,10 +274,10 @@ partial class TcpMsClient {
 
         try {
             //send panic
-            await Client.Stream.SendPackage(Package.PackageTypes.Panic);
+            await Client.SendPackageAsync(new Package(Package.PackageTypes.Panic));
 
             //await response
-            _ = await Client.Stream.ReceivePackage(Package.PackageTypes.Panic, TimeoutToken);
+            _ = await Client.ReceivePackageAsync(Package.PackageTypes.Panic, TimeoutToken);
 
             await HandlePanic();
 
@@ -292,7 +292,7 @@ partial class TcpMsClient {
     /// <summary>Sends an error package</summary>
     private async Task SendError() {
         EnsureIsConnected();
-        await Client.Stream.SendPackage(Package.PackageTypes.Error);
+        await Client.SendPackageAsync(new Package(Package.PackageTypes.Error));
     }
 
     #region Handlers
@@ -304,7 +304,7 @@ partial class TcpMsClient {
 
     /// <summary>Sends back a pong package</summary>
     private async Task HandlePing() {
-        await Client.Stream.SendPackage(Package.PackageTypes.Pong);
+        await Client.SendPackageAsync(new Package(Package.PackageTypes.Pong));
     }
 
     /// <summary>Updates the server settings using <paramref name="data"/></summary>
@@ -325,10 +325,10 @@ partial class TcpMsClient {
 
                 Client.CallPanic();
 
-                Client.Stream.ClearBuffer();
+                await Client.Stream.FlushAsync();
 
                 //receive settings
-                Package settingsPackage = await Client.Stream.ReceivePackage(Package.PackageTypes.NewSettings, TimeoutToken); //if max panics is reached, error package is sent, so this throws an exception
+                Package settingsPackage = await Client.ReceivePackageAsync(Package.PackageTypes.NewSettings, TimeoutToken); //if max panics is reached, error package is sent, so this throws an exception
                 Settings.Update(settingsPackage.Data);
 
                 await Authenticate();

@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 using System.Runtime.Intrinsics.X86;
 using System.Security.Cryptography;
 
-namespace AlvinSoft;
 internal class RepeatingAction : IDisposable {
 
     private readonly System.Timers.Timer _internalTimer;
@@ -303,4 +302,12 @@ internal static class HashTools {
 
     }
 
+}
+
+internal static class RandomGen {
+    public static byte[] GetBytes(int length) {
+        byte[] buffer = new byte[length];
+        Random.Shared.NextBytes(buffer);
+        return buffer;
+    }
 }
