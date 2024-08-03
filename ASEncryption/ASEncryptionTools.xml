@@ -1,0 +1,277 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>ASEncryptionTools</name>
+    </assembly>
+    <members>
+        <member name="T:AlvinSoft.Cryptography.SecurePassword">
+            <summary>Represents a password securely stored in memory</summary>
+        </member>
+        <member name="P:AlvinSoft.Cryptography.SecurePassword.SecureString">
+            <summary>The <see cref="T:System.Security.SecureString"/> instance that is storing the password</summary>
+        </member>
+        <member name="P:AlvinSoft.Cryptography.SecurePassword.Length">
+            <summary>The character password's length</summary>
+        </member>
+        <member name="P:AlvinSoft.Cryptography.SecurePassword.IsEmpty">
+            <summary>Shorthand for <c>Length == 0</c></summary>
+        </member>
+        <member name="P:AlvinSoft.Cryptography.SecurePassword.PasswordUnicodeBytes">
+            <summary>Returns the unicode bytes of the password. Shorthand for <c>Encoding.Unicode.GetBytes(PasswordChars)</c>.</summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.AppendChar(System.Char)">
+            <summary>Append <paramref name="c"/> to this password</summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.AppendString(System.String)">
+            <summary>Append <paramref name="s"/> to this password</summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.#ctor">
+            <summary>Creates an empty instance</summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.#ctor(System.String)">
+            <summary>Create a new instance and copy the <paramref name="password"/> chars to <see cref="P:AlvinSoft.Cryptography.SecurePassword.SecureString"/></summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.#ctor(System.Security.SecureString)">
+            <summary>Create a new instance and assign <paramref name="password"/> to <see cref="P:AlvinSoft.Cryptography.SecurePassword.SecureString"/></summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.ToString">
+            <summary>Copy the <see cref="P:AlvinSoft.Cryptography.SecurePassword.SecureString"/> character bytes to a string</summary>
+            <returns>The string containing the <see cref="P:AlvinSoft.Cryptography.SecurePassword.SecureString"/> chars</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.Dispose">
+            <summary>Dispose of this instance</summary>
+        </member>
+        <member name="T:AlvinSoft.Cryptography.AesEncryption">
+            <summary>Represents the Key and IV of an Aes encryption. Optionally holds a password and a salt to derive the key from.</summary>
+        </member>
+        <member name="P:AlvinSoft.Cryptography.AesEncryption.Key">
+            <summary>The Aes key bytes</summary>
+            <remarks>To import a key/IV/salt, use the constructor.</remarks>
+        </member>
+        <member name="P:AlvinSoft.Cryptography.AesEncryption.IV">
+            <summary>The initialization vector bytes</summary>
+        </member>
+        <member name="P:AlvinSoft.Cryptography.AesEncryption.Salt">
+            <summary>The salt bytes used to derive the <c>Key</c> using <see cref="P:AlvinSoft.Cryptography.AesEncryption.Password"/>.</summary>
+        </member>
+        <member name="P:AlvinSoft.Cryptography.AesEncryption.HasPassword">
+            <summary>Shorthand for <c>!Password.IsEmpty</c></summary>
+        </member>
+        <member name="P:AlvinSoft.Cryptography.AesEncryption.HasSalt">
+            <summary>Shorthand for <c>Salt != null</c></summary>
+        </member>
+        <member name="P:AlvinSoft.Cryptography.AesEncryption.Password">
+            <summary>The password used in combination with <c>Salt</c>. If null is provided, <see cref="F:System.String.Empty"/> is stored.</summary>
+            <remarks>If Salt is assigned (not null), then the key is derived using the new password.</remarks>
+        </member>
+        <member name="F:AlvinSoft.Cryptography.AesEncryption.DefaultSaltSize">
+            <summary>The default value assigned to <see cref="P:AlvinSoft.Cryptography.AesEncryption.SaltSize"/>.</summary>
+        </member>
+        <member name="P:AlvinSoft.Cryptography.AesEncryption.SaltSize">
+            <summary>The length of the salt used to generate the next salt.</summary>
+        </member>
+        <member name="F:AlvinSoft.Cryptography.AesEncryption.DefaultKeyDeriveIterations">
+            <summary>The default value assigned to <see cref="P:AlvinSoft.Cryptography.AesEncryption.KeyDeriveIterations"/>.</summary>
+        </member>
+        <member name="P:AlvinSoft.Cryptography.AesEncryption.KeyDeriveIterations">
+            <summary>The number of iterations used to derive the key using the password. Must be greater than 0.</summary>
+            <remarks>If a salt and a password are assigned (not null), then the key is derived using the new iteration count.</remarks>
+        </member>
+        <member name="P:AlvinSoft.Cryptography.AesEncryption.NumbersOnlyPassword">
+            <summary>Set to <c>true</c> to generate a password consisting of numbers only.</summary>
+            <remarks>Assigning a password sets this variable accordingly. Used for password generation.</remarks>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.AesEncryption.GenerateAndFill(System.Int32)">
+            <summary>Generates new password, salt, IV then derives the key (in this order) based on this instance's generation properties</summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.AesEncryption.#ctor(System.Boolean,System.Int32)">
+            <summary>Creates a new instance and calls <c>GenerateAndFill()</c>.</summary>
+            <remarks>A new password, salt and IV is generated, then the key is derived.</remarks>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.AesEncryption.#ctor(System.String,System.Byte[],System.Byte[],System.Int32)">
+            <summary>Create a new instance, assign password, salt and IV, then derive the key</summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.AesEncryption.#ctor(AlvinSoft.Cryptography.SecurePassword,System.Byte[],System.Byte[],System.Int32)">
+            <summary>Create a new instance, assign password, salt and IV, then derive the key.</summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.AesEncryption.#ctor(System.Byte[],System.Byte[])">
+            <summary>Create a new instance and assign key and IV. Does not assign password and salt.</summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.AesEncryption.EncryptString(System.String)">
+            <summary>Encrypts a unicode string using this instance's cryptographic info.</summary>
+            <returns>The encrypted bytes. If the encryption fails, <c>null</c>.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.AesEncryption.EncryptBytes(System.Byte[])">
+            <summary>Encrypts bytes using this instance's cryptographic info.</summary>
+            <returns>The encrypted bytes. If the encryption fails, <c>null</c>.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.AesEncryption.EncryptToBase64(System.String)">
+            <summary>Encrypts a string using the instance's cryptographic info</summary>
+            <returns>The encrypted string bytes as a Base64 string</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.AesEncryption.DecryptBase64(System.String)">
+            <summary>Decrypts Base64 string bytes using the instance's cryptographic info</summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.AesEncryption.DecryptString(System.Byte[])">
+            <summary>Decrypts encrypted unicode bytes using this instance's cryptographic info</summary>
+            <returns>The decrypted bytes. If the decryption fails, <c>null</c>.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.AesEncryption.DecryptBytes(System.Byte[])">
+            <summary>Decrypts encrypted bytes using this instance's cryptographic info</summary>
+            <returns>The decrypted bytes. If the decryption fails, <c>null</c>.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.AesEncryption.GetEncryptor(System.IO.Stream)">
+            <summary>Create a write-mode encryptor stream using this instance's cryptographic info.</summary>
+            <param name="target">The target stream that the CryptoStream writes to</param>\
+            <remarks>Make sure to call <c>Dispose()</c> when no longer needed. CryptoStream then also disposes of the target stream (in .NET 8 at least).</remarks>
+            <exception cref="T:System.ArgumentNullException"/>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.AesEncryption.GetDecryptor(System.IO.Stream)">
+            <summary>Create a read-mode encryptor stream using the instance's cryptographic info</summary>
+            <param name="target">The target stream that the CryptoStream writes to</param>
+            <remarks>Make sure to call <c>Dispose()</c> when no longer needed. CryptoStream then also disposes of the target stream (in .NET 8 at least).</remarks>
+            <exception cref="T:System.ArgumentNullException"/>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.AesEncryption.GeneratePassword(System.Int32)">
+            <summary>
+            Assign <see cref="P:AlvinSoft.Cryptography.AesEncryption.Password"/> a newly generated password of length <paramref name="length"/> based on the <see cref="P:AlvinSoft.Cryptography.AesEncryption.NumbersOnlyPassword"/> property.
+            </summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.AesEncryption.GenerateNumberPassword(System.Int32)">
+            <summary>Generate a string consisting of <paramref name="length"/> numbers</summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.AesEncryption.GenerateLettersPassword(System.Int32)">
+            <summary>Generate a random combination string of the most common characters</summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.AesEncryption.GenerateIv">
+            <summary>Assign a newly generate IV</summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.AesEncryption.GenerateSalt">
+            <summary>Assign a newly generated salt that is <see cref="P:AlvinSoft.Cryptography.AesEncryption.SaltSize"/> bytes long</summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.AesEncryption.DeriveKey">
+            <summary>Derives <see cref="P:AlvinSoft.Cryptography.AesEncryption.Password"/> using <see cref="P:AlvinSoft.Cryptography.AesEncryption.Salt"/>, and iterates <see cref="P:AlvinSoft.Cryptography.AesEncryption.KeyDeriveIterations"/> times. The bytes are assigned to this instance's key.</summary>
+            <exception cref="T:System.ArgumentNullException"/>
+            <exception cref="T:System.ArgumentOutOfRangeException"/>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.AesEncryption.Dispose">
+            <summary>Disposes of this instance</summary>
+        </member>
+        <member name="T:AlvinSoft.Cryptography.RSAEncryption">
+            <summary>Abstracts <see cref="T:System.Security.Cryptography.RSA"/> and provides simple methods for importing/exporting public/private keys, and encrypting/decrypting.</summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.RSAEncryption.#ctor(AlvinSoft.Cryptography.RSAKey)">
+            <summary>Abstracts <see cref="T:System.Security.Cryptography.RSA"/> and provides simple methods for importing/exporting public/private keys, and encrypting/decrypting.</summary>
+        </member>
+        <member name="P:AlvinSoft.Cryptography.RSAEncryption.RSAKeySize">
+            <summary>The key size in bits used to initialize the <see cref="T:System.Security.Cryptography.RSACryptoServiceProvider"/></summary>
+        </member>
+        <member name="F:AlvinSoft.Cryptography.RSAEncryption.Key">
+            <summary>The RSA encryption parameters</summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.RSAEncryption.#ctor">
+            <summary>Create a new RSA instance and generate a key</summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.RSAEncryption.#ctor(System.Security.Cryptography.RSAParameters)">
+            <summary>Create a new RSA instance and import <paramref name="parameters"/></summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.RSAEncryption.EncryptBytes(System.Byte[])">
+            <summary>Encrypt <paramref name="data"/> using this instance's public key</summary>
+            <returns>The encrypted bytes. If anything fails, <c>null</c>.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.RSAEncryption.DecryptBytes(System.Byte[])">
+            <summary>Decrypt <paramref name="data"/> using this instance's private key</summary>
+            <returns>The encrypted bytes. If anything fails, <c>null</c>.</returns>
+            <exception cref="T:System.Security.Cryptography.CryptographicException"/>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.RSAEncryption.EncryptString(System.String)">
+            <summary>Encrypt unicode string <paramref name="data"/> using this instance's public key</summary>
+            <returns>The encrypted bytes. If anything fails, <c>null</c>.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.RSAEncryption.DecryptString(System.Byte[])">
+            <summary>Decrypt encrypted unicode string bytes <paramref name="encryptedData"/> using this instance's private key</summary>
+            <returns>The encrypted bytes. If anything fails, <c>null</c>.</returns>
+            <exception cref="T:System.Security.Cryptography.CryptographicException"/>
+        </member>
+        <member name="T:AlvinSoft.Cryptography.RSAKey">
+            <summary>Represents an RSA key, with or without the private key.</summary>
+        </member>
+        <member name="P:AlvinSoft.Cryptography.RSAKey.Key">
+            <summary>The used RSA key</summary>
+        </member>
+        <member name="P:AlvinSoft.Cryptography.RSAKey.HasPrivateKey">
+            <summary>true if <see cref="P:AlvinSoft.Cryptography.RSAKey.Key"/> contains a private key; otherwise false.</summary>
+        </member>
+        <member name="P:AlvinSoft.Cryptography.RSAKey.HasPublicKey">
+            <summary>true if <see cref="P:AlvinSoft.Cryptography.RSAKey.Key"/> contains a public key; otherwise false.</summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.RSAKey.CreateRSA">
+            <summary>
+            Create a new <see cref="T:System.Security.Cryptography.RSA"/> instance and import this instance's key.
+            </summary>
+            <returns>The RSA instance</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.RSAKey.#ctor">
+            <summary>
+            Create an instance with a generated key
+            </summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.RSAKey.#ctor(System.Security.Cryptography.RSAParameters)">
+            <summary>
+            Create an instance that holds an RSA key with import/export functionality
+            </summary>
+            <param name="parameters">The parameters used export the key from</param>
+            <exception cref="T:System.ArgumentException"/>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.RSAKey.ExportPrivateKey">
+            <summary>
+            Export the private key
+            </summary>
+            <exception cref="T:System.ArgumentException"/>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.RSAKey.ImportPrivateKey(System.Byte[])">
+            <summary>
+            Import an exported private key and calculate the public key.
+            </summary>
+            <param name="key">A key exported with <see cref="M:AlvinSoft.Cryptography.RSAKey.ExportPrivateKey"/></param>
+            <exception cref="T:System.ArgumentException"/>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.RSAKey.ExportPublicKey">
+            <summary>
+            Export the public key
+            </summary>
+            <exception cref="T:System.ArgumentException"/>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.RSAKey.ImportPublicKey(System.Byte[])">
+            <summary>
+            Import an exported public key
+            </summary>
+            <param name="key">A key exported with <see cref="M:AlvinSoft.Cryptography.RSAKey.ExportPublicKey"/></param>
+            <exception cref="T:System.ArgumentException"/>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.RSAKey.ExportPrivateKeyBase64">
+            <summary>
+            Export the private key as a Base64 string (PEM)
+            </summary>
+            <remarks>The string always starts with <c>-----BEGIN RSA PRIVATE KEY-----</c> and ends with <c>-----END RSA PRIVATE KEY-----</c></remarks>
+            <returns>The encoded Base64 string</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.RSAKey.ImportPrivateKeyBase64(System.String)">
+            <summary>
+            Import a Base64 encoded (PEM) private key
+            </summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.RSAKey.ExportPublicKeyBase64">
+            <summary>
+            Export the public key as a Base64 string
+            </summary>
+            <remarks>The string always starts with <c>-----BEGIN RSA PUBLIC KEY-----</c> and ends with <c>-----END RSA PUBLIC KEY-----</c></remarks>
+            <returns>The encoded Base64 string</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.RSAKey.ImportPublicKeyBase64(System.String)">
+            <summary>
+            Import a Base64 encoded (PEM) public key
+            </summary>
+        </member>
+    </members>
+</doc>
