@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading.Tasks;
 using AlvinSoft.Cryptography;
 using System.Diagnostics.CodeAnalysis;
+using System.Buffers;
 
 namespace AlvinSoft.TcpMs;
 
@@ -153,6 +154,9 @@ internal class Client(byte[] id, ServerSettings settings, TcpClient client) {
         }
     }
 
+    internal SemaphoreSlimUsing WriteSync { get; } = new();
+    internal SemaphoreSlimUsing ReadSync { get; } = new();
+
     internal CancellationTokenSource CancelTokenSource { get; } = new CancellationTokenSource();
     internal CancellationToken TimeoutToken => new CancellationTokenSource(settings.ReceiveTimeoutMs).Token;
 
@@ -161,7 +165,9 @@ internal class Client(byte[] id, ServerSettings settings, TcpClient client) {
         if (!IsConnected)
             return;
 
-        Stream.Write(package.GetBytes());
+        WriteSync.Wait();
+        using (WriteSync)
+            Stream.Write(package.GetBytes());
 
     }
     internal async Task SendPackageAsync(Package package) {
@@ -169,7 +175,9 @@ internal class Client(byte[] id, ServerSettings settings, TcpClient client) {
         if (!IsConnected)
             return;
 
-        await Stream.WriteAsync(package.GetBytes());
+        await WriteSync.WaitAsync();
+        using (WriteSync)
+            await Stream.WriteAsync(package.GetBytes());
     }
 
     internal Package ReceivePackage(Package.PackageTypes expectedType = Package.PackageTypes.None) {
@@ -177,28 +185,32 @@ internal class Client(byte[] id, ServerSettings settings, TcpClient client) {
         if (!IsConnected)
             return new(Package.PackageTypes.None);
 
-        Package.PackageTypes packageType = (Package.PackageTypes)Stream.ReadByte();
+        ReadSync.Wait();
+        using (ReadSync) {
 
-        if (expectedType != Package.PackageTypes.None && packageType != expectedType) {
-            TcpMsProtocolException.ThrowUnexpectedPackage(expectedType, packageType);
-            DiscardPackageRest();
+            Package.PackageTypes packageType = (Package.PackageTypes)Stream.ReadByte();
+
+            if (expectedType != Package.PackageTypes.None && packageType != expectedType) {
+                TcpMsProtocolException.ThrowUnexpectedPackage(expectedType, packageType);
+                DiscardPackageRest();
+            }
+
+            Package.DataTypes dataType = (Package.DataTypes)Stream.ReadByte();
+
+            byte[] dataLengthBuffer = new byte[4];
+            Stream.Read(dataLengthBuffer);
+            int dataLength = BinaryPrimitives.ReadInt32BigEndian(dataLengthBuffer);
+
+            byte[] dataBuffer;
+            if (dataLength > 0) {
+                dataBuffer = new byte[dataLength];
+                Stream.Read(dataBuffer);
+            } else {
+                dataBuffer = null;
+            }
+            return new(packageType, dataType, dataBuffer, false);
         }
 
-        Package.DataTypes dataType = (Package.DataTypes)Stream.ReadByte();
-
-        byte[] dataLengthBuffer = new byte[4];
-        Stream.Read(dataLengthBuffer);
-        int dataLength = BinaryPrimitives.ReadInt32BigEndian(dataLengthBuffer);
-
-        byte[] dataBuffer;
-        if (dataLength > 0) {
-            dataBuffer = new byte[dataLength];
-            Stream.Read(dataBuffer);
-        } else {
-            dataBuffer = null;
-        }
-
-        return new(packageType, dataType, dataBuffer, false);
 
     }
     internal async Task<Package> ReceivePackageAsync(Package.PackageTypes expectedType = Package.PackageTypes.None, CancellationToken cancellationToken = default) {
@@ -206,43 +218,52 @@ internal class Client(byte[] id, ServerSettings settings, TcpClient client) {
         if (!IsConnected)
             return new(Package.PackageTypes.None);
 
-        byte[] packageTypeBuffer = new byte[1];
-        await Stream.ReadAsync(packageTypeBuffer, cancellationToken);
-        Package.PackageTypes packageType = (Package.PackageTypes)packageTypeBuffer[0];
+        await ReadSync.WaitAsync(cancellationToken);
+        using (ReadSync) {
 
-        if (expectedType != Package.PackageTypes.None && packageType != expectedType) {
-            TcpMsProtocolException.ThrowUnexpectedPackage(expectedType, packageType);
-            DiscardPackageRest();
+            byte[] packageTypeBuffer = new byte[1];
+            await Stream.ReadAsync(packageTypeBuffer, cancellationToken);
+            Package.PackageTypes packageType = (Package.PackageTypes)packageTypeBuffer[0];
+
+            if (expectedType != Package.PackageTypes.None && packageType != expectedType) {
+                TcpMsProtocolException.ThrowUnexpectedPackage(expectedType, packageType);
+                DiscardPackageRest();
+            }
+
+            byte[] dataTypeBuffer = new byte[1];
+            await Stream.ReadAsync(dataTypeBuffer, TimeoutToken);
+            Package.DataTypes dataType = (Package.DataTypes)dataTypeBuffer[0];
+
+            byte[] dataLengthBuffer = new byte[4];
+            await Stream.ReadAsync(dataLengthBuffer, TimeoutToken);
+            int dataLength = BinaryPrimitives.ReadInt32BigEndian(dataLengthBuffer);
+
+            byte[] dataBuffer;
+            if (dataLength > 0) {
+                dataBuffer = new byte[dataLength];
+                await Stream.ReadAsync(dataBuffer, TimeoutToken);
+            } else {
+                dataBuffer = null;
+            }
+
+            return new(packageType, dataType, dataBuffer, false);
+
         }
-
-        byte[] dataTypeBuffer = new byte[1];
-        await Stream.ReadAsync(dataTypeBuffer, TimeoutToken);
-        Package.DataTypes dataType = (Package.DataTypes)dataTypeBuffer[0];
-
-        byte[] dataLengthBuffer = new byte[4];
-        await Stream.ReadAsync(dataLengthBuffer, TimeoutToken);
-        int dataLength = BinaryPrimitives.ReadInt32BigEndian(dataLengthBuffer);
-
-        byte[] dataBuffer;
-        if (dataLength > 0) {
-            dataBuffer = new byte[dataLength];
-            await Stream.ReadAsync(dataBuffer, TimeoutToken);
-        } else {
-            dataBuffer = null;
-        }
-
-        return new(packageType, dataType, dataBuffer, false);
-
     }
 
     private void DiscardPackageRest() {
-        _ = Stream.ReadByte(); //data type
-        byte[] dataLengthBuffer = new byte[4];
-        Stream.Read(dataLengthBuffer); //data length
 
-        int dataLength = BinaryPrimitives.ReadInt32BigEndian(dataLengthBuffer);
+        ReadSync.WaitAsync();
+        using (ReadSync) {
 
-        Stream.Read(new byte[dataLength], 0, dataLength); //data
+            _ = Stream.ReadByte(); //data type
+            byte[] dataLengthBuffer = new byte[4];
+            Stream.Read(dataLengthBuffer); //data length
+
+            int dataLength = BinaryPrimitives.ReadInt32BigEndian(dataLengthBuffer);
+
+            Stream.Read(new byte[dataLength], 0, dataLength); //data
+        }
     }
 
     /// <summary>Closes this connection and disposes of it</summary>
