@@ -22,6 +22,9 @@ public partial class TcpMsClient(string hostname, ushort port) {
 
     public event Connected OnConnectEvent;
     public event Disconnected OnDisconnectEvent;
+    /// <summary>
+    /// Triggered when this client had an error and resolved it. Use it to resend potentially important data that was lost.
+    /// </summary>
     public event Panic OnPanicEvent;
 
     private void OnConnected() => OnConnectEvent?.Invoke();
@@ -29,38 +32,10 @@ public partial class TcpMsClient(string hostname, ushort port) {
     private void OnPanic() => OnPanicEvent?.Invoke();
 
 
-    public delegate void BoolReceived(bool data);
-    public delegate void IntReceived(int data);
-    public delegate void StringReceived(string data);
-    public delegate void BlobReceived(byte[] data);
-    public delegate void DataReceived(object data, Type type);
-
-
-    public event BoolReceived OnBoolReceivedEvent;
-    public event IntReceived OnIntReceivedEvent;
-    public event StringReceived OnStringReceivedEvent;
-    public event BlobReceived OnBlobReceivedEvent;
+    public delegate void DataReceived(object data, Package.DataTypes type);
     public event DataReceived OnDataReceivedEvent;
 
-    private void OnBoolReceived(bool data) {
-        OnBoolReceivedEvent?.Invoke(data);
-        OnDataReceivedEvent?.Invoke(data, typeof(bool));
-    }
-
-    private void OnIntReceived(int data) {
-        OnIntReceivedEvent?.Invoke(data);
-        OnDataReceivedEvent?.Invoke(data, typeof(int));
-    }
-
-    private void OnStringReceived(string data) {
-        OnStringReceivedEvent?.Invoke(data);
-        OnDataReceivedEvent?.Invoke(data, typeof(string));
-    }
-
-    private void OnBlobReceived(byte[] data) {
-        OnBlobReceivedEvent?.Invoke(data);
-        OnDataReceivedEvent?.Invoke(data, typeof(byte[]));
-    }
+    private void OnDataReceived(object data, Package.DataTypes type) => OnDataReceivedEvent?.Invoke(data, type);
 
     #pragma warning restore CS1591
     #endregion
@@ -154,9 +129,24 @@ public partial class TcpMsClient(string hostname, ushort port) {
         SendBoolAsync(data).Wait();
     }
 
+    /// <summary>Send a byte package</summary>
+    public void SendByte(byte data) {
+        SendByteAsync(data).Wait();
+    }
+
+    /// <summary>Send a <see cref="short"/> package</summary>
+    public void SendShort(short data) {
+        SendShortAsync(data).Wait();
+    }
+
     /// <summary>Send an int package</summary>
     public void SendInt(int data) {
         SendIntAsync(data).Wait();
+    }
+
+    /// <summary>Send a <see cref="long"/> package</summary>
+    public void SendLong(long data) {
+        SendLongAsync(data).Wait();
     }
 
     /// <summary>Send a string package</summary>
@@ -177,8 +167,34 @@ public partial class TcpMsClient(string hostname, ushort port) {
         EnsureIsConnected();
 
         byte[] bytes = BitConverter.GetBytes(data);
+        EncryptIfNeccessary(ref bytes);
         await Client.SendPackageAsync(new Package(Package.PackageTypes.Data, Package.DataTypes.Bool, bytes, false));
         
+    }
+
+    /// <summary>Send a bool package</summary>
+    /// <returns>A task that finishes when the data was sent</returns>
+    public async Task SendByteAsync(byte data) {
+
+        EnsureIsConnected();
+
+        byte[] bytes = [data];
+        EncryptIfNeccessary(ref bytes);
+        await Client.SendPackageAsync(new Package(Package.PackageTypes.Data, Package.DataTypes.Byte, bytes, false));
+
+    }
+
+    /// <summary>Send a <see cref="short"/> package</summary>
+    /// <returns>A task that finishes when the data was sent</returns>
+    public async Task SendShortAsync(short data) {
+
+        EnsureIsConnected();
+
+        byte[] bytes = new byte[2];
+        BinaryPrimitives.WriteInt16BigEndian(bytes, data);
+        EncryptIfNeccessary(ref bytes);
+        await Client.SendPackageAsync(new Package(Package.PackageTypes.Data, Package.DataTypes.Short, bytes, false));
+
     }
 
     /// <summary>Send an int package</summary>
@@ -189,7 +205,21 @@ public partial class TcpMsClient(string hostname, ushort port) {
 
         byte[] bytes = new byte[4];
         BinaryPrimitives.WriteInt32BigEndian(bytes, data);
+        EncryptIfNeccessary(ref bytes);
         await Client.SendPackageAsync(new Package(Package.PackageTypes.Data, Package.DataTypes.Int, bytes, false));
+
+    }
+
+    /// <summary>Send a <see cref="long"/> package</summary>
+    /// <returns>A task that finishes when the data was sent</returns>
+    public async Task SendLongAsync(long data) {
+
+        EnsureIsConnected();
+
+        byte[] bytes = new byte[8];
+        BinaryPrimitives.WriteInt64BigEndian(bytes, data);
+        EncryptIfNeccessary(ref bytes);
+        await Client.SendPackageAsync(new Package(Package.PackageTypes.Data, Package.DataTypes.Long, bytes, false));
 
     }
 
@@ -201,6 +231,7 @@ public partial class TcpMsClient(string hostname, ushort port) {
         EnsureIsConnected();
 
         byte[] bytes = Encoding.Unicode.GetBytes(data);
+        EncryptIfNeccessary(ref bytes);
         await Client.SendPackageAsync(new Package(Package.PackageTypes.Data, Package.DataTypes.String, bytes, false));
     }
 
@@ -210,7 +241,9 @@ public partial class TcpMsClient(string hostname, ushort port) {
 
         EnsureIsConnected();
 
-        await Client.SendPackageAsync(new Package(Package.PackageTypes.Data, Package.DataTypes.Blob, data));
+        byte[] bytes = data;
+        EncryptIfNeccessary(ref bytes);
+        await Client.SendPackageAsync(new Package(Package.PackageTypes.Data, Package.DataTypes.Blob, bytes));
     }
 
     #endregion

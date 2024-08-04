@@ -7,6 +7,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using AlvinSoft.Cryptography;
+using System.Diagnostics.CodeAnalysis;
 
 namespace AlvinSoft.TcpMs;
 
@@ -155,14 +156,30 @@ internal class Client(byte[] id, ServerSettings settings, TcpClient client) {
     internal CancellationTokenSource CancelTokenSource { get; } = new CancellationTokenSource();
     internal CancellationToken TimeoutToken => new CancellationTokenSource(settings.ReceiveTimeoutMs).Token;
 
-    internal void SendPackage(Package package) => Stream.Write(package.GetBytes());
-    internal async Task SendPackageAsync(Package package) => await Stream.WriteAsync(package.GetBytes());
+    internal void SendPackage(Package package) {
+
+        if (!IsConnected)
+            return;
+
+        Stream.Write(package.GetBytes());
+
+    }
+    internal async Task SendPackageAsync(Package package) {
+
+        if (!IsConnected)
+            return;
+
+        await Stream.WriteAsync(package.GetBytes());
+    }
 
     internal Package ReceivePackage(Package.PackageTypes expectedType = Package.PackageTypes.None) {
 
+        if (!IsConnected)
+            return new(Package.PackageTypes.None);
+
         Package.PackageTypes packageType = (Package.PackageTypes)Stream.ReadByte();
 
-        if (packageType != Package.PackageTypes.None && packageType != expectedType) {
+        if (expectedType != Package.PackageTypes.None && packageType != expectedType) {
             TcpMsProtocolException.ThrowUnexpectedPackage(expectedType, packageType);
             DiscardPackageRest();
         }
@@ -173,19 +190,27 @@ internal class Client(byte[] id, ServerSettings settings, TcpClient client) {
         Stream.Read(dataLengthBuffer);
         int dataLength = BinaryPrimitives.ReadInt32BigEndian(dataLengthBuffer);
 
-        byte[] dataBuffer = new byte[dataLength];
-        Stream.Read(dataBuffer);
+        byte[] dataBuffer;
+        if (dataLength > 0) {
+            dataBuffer = new byte[dataLength];
+            Stream.Read(dataBuffer);
+        } else {
+            dataBuffer = null;
+        }
 
         return new(packageType, dataType, dataBuffer, false);
 
     }
     internal async Task<Package> ReceivePackageAsync(Package.PackageTypes expectedType = Package.PackageTypes.None, CancellationToken cancellationToken = default) {
 
+        if (!IsConnected)
+            return new(Package.PackageTypes.None);
+
         byte[] packageTypeBuffer = new byte[1];
         await Stream.ReadAsync(packageTypeBuffer, cancellationToken);
         Package.PackageTypes packageType = (Package.PackageTypes)packageTypeBuffer[0];
 
-        if (packageType != Package.PackageTypes.None && packageType != expectedType) {
+        if (expectedType != Package.PackageTypes.None && packageType != expectedType) {
             TcpMsProtocolException.ThrowUnexpectedPackage(expectedType, packageType);
             DiscardPackageRest();
         }
@@ -198,8 +223,13 @@ internal class Client(byte[] id, ServerSettings settings, TcpClient client) {
         await Stream.ReadAsync(dataLengthBuffer, TimeoutToken);
         int dataLength = BinaryPrimitives.ReadInt32BigEndian(dataLengthBuffer);
 
-        byte[] dataBuffer = new byte[dataLength];
-        await Stream.ReadAsync(dataBuffer, TimeoutToken);
+        byte[] dataBuffer;
+        if (dataLength > 0) {
+            dataBuffer = new byte[dataLength];
+            await Stream.ReadAsync(dataBuffer, TimeoutToken);
+        } else {
+            dataBuffer = null;
+        }
 
         return new(packageType, dataType, dataBuffer, false);
 
@@ -263,6 +293,7 @@ public readonly struct Package {
         EncrIV,
         EncrSalt,
         Test,
+        TestTrySuccess,
         Ping,
         Pong,
         Panic
@@ -448,16 +479,11 @@ public readonly struct Package {
 #nullable restore
 
 
-#pragma warning disable CS9113
 /// <summary>
 /// Thrown when a TcpMs instance breaks protocol.
 /// </summary>
-/// <param name="message">The message to display</param>
 [Serializable]
-public class TcpMsProtocolException(string message) : Exception {
-    internal static void ThrowUnexpectedPackage(Package.PackageTypes expectedPackage, Package.PackageTypes receivedPackage) {
-        string errorMessage = $"Received package of type {receivedPackage}, but expected {expectedPackage}";
-        throw new TcpMsProtocolException(errorMessage);
-    }
+public class TcpMsProtocolException(string message) : Exception(message) {
+    [DoesNotReturn]
+    internal static void ThrowUnexpectedPackage(Package.PackageTypes expectedPackage, Package.PackageTypes receivedPackage) => throw new TcpMsProtocolException($"Received package of type {receivedPackage}, but expected {expectedPackage}");
 }
-#pragma warning restore CS9113

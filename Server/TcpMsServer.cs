@@ -38,39 +38,10 @@ public partial class TcpMsServer(IPAddress address, ushort port, ServerSettings 
         OnClientPanicEvent?.Invoke(clientId);
     }
 
-
-    public delegate void BoolReceived(byte[] clientId, bool data);
-    public delegate void IntReceived(byte[] clientId, int data);
-    public delegate void StringReceived(byte[] clientId, string data);
-    public delegate void BlobReceived(byte[] clientId, byte[] data);
-    public delegate void DataReceived(byte[] clientId, object data, Type type);
-
-
-    public event BoolReceived OnBoolReceivedEvent;
-    public event IntReceived OnIntReceivedEvent;
-    public event StringReceived OnStringReceivedEvent;
-    public event BlobReceived OnBlobReceivedEvent;
+    public delegate void DataReceived(byte[] clientId, object data, Package.DataTypes type);
     public event DataReceived OnDataReceivedEvent;
 
-    private void OnBoolReceived(byte[] clientId, bool data) {
-        OnBoolReceivedEvent?.Invoke(clientId, data);
-        OnDataReceivedEvent?.Invoke(clientId, data, typeof(bool));
-    }
-
-    private void OnIntReceived(byte[] clientId, int data) {
-        OnIntReceivedEvent?.Invoke(clientId, data);
-        OnDataReceivedEvent?.Invoke(clientId, data, typeof(int));
-    }
-
-    private void OnStringReceived(byte[] clientId, string data) {
-        OnStringReceivedEvent?.Invoke(clientId, data);
-        OnDataReceivedEvent?.Invoke(clientId, data, typeof(string));
-    }
-
-    private void OnBlobReceived(byte[] clientId, byte[] data) {
-        OnBlobReceivedEvent?.Invoke(clientId, data);
-        OnDataReceivedEvent?.Invoke(clientId, data, typeof(byte[]));
-    }
+    private void OnDataReceived(byte[] clientId, object data, Package.DataTypes type) => OnDataReceivedEvent?.Invoke(clientId, data, type);
 
     #pragma warning restore CS1591
     #endregion
@@ -145,9 +116,9 @@ public partial class TcpMsServer(IPAddress address, ushort port, ServerSettings 
             ListenerCancellationTokenSource?.Cancel();
         }
 
-        Clients.Clear();
-        Listener.Stop();
-        Listener.Dispose();
+        Clients?.Clear();
+        Listener?.Stop();
+        Listener?.Dispose();
 
     }
 
@@ -229,8 +200,17 @@ public partial class TcpMsServer(IPAddress address, ushort port, ServerSettings 
     /// <summary>Sends a bool package to a client</summary>
     public void SendBool(byte[] clientId, bool data) => SendBoolAsync(clientId, data).Wait();
 
+    /// <summary>Sends a byte package to a client</summary>
+    public void SendByte(byte[] clientId, byte data) => SendByteAsync(clientId, data).Wait();
+
+    /// <summary>Sends a <see cref="short"/> package to a client</summary>
+    public void SendShort(byte[] clientId, short data) => SendShortAsync(clientId, data).Wait();
+
     /// <summary>Sends an int package to a client</summary>
     public void SendInt(byte[] clientId, int data) => SendIntAsync(clientId, data).Wait();
+
+    /// <summary>Sends a <see cref="long"/> package to a client</summary>
+    public void SendLong(byte[] clientId, long data) => SendLongAsync(clientId, data).Wait();
 
     /// <summary>Sends a string package to a client</summary>
     /// <remarks>The string is sent in UTF-16 format</remarks>
@@ -244,9 +224,21 @@ public partial class TcpMsServer(IPAddress address, ushort port, ServerSettings 
     /// <returns>A task that finishes when the data was sent</returns>
     public async Task SendBoolAsync(byte[] clientId, bool data) => await SendBoolAsync(GetClient(clientId), data);
 
+    /// <summary>Sends a byte package to a client</summary>
+    /// <returns>A task that finishes when the data was sent</returns>
+    public async Task SendByteAsync(byte[] clientId, byte data) => await SendByteAsync(GetClient(clientId), data);
+
+    /// <summary>Sends a <see cref="short"/> package to a client</summary>
+    /// <returns>A task that finishes when the data was sent</returns>
+    public async Task SendShortAsync(byte[] clientId, short data) => await SendShortAsync(GetClient(clientId), data);
+
     /// <summary>Sends an int package to a client</summary>
     /// <returns>A task that finishes when the data was sent</returns>
     public async Task SendIntAsync(byte[] clientId, int data) => await SendIntAsync(GetClient(clientId), data);
+
+    /// <summary>Sends a <see cref="long"/> package to a client</summary>
+    /// <returns>A task that finishes when the data was sent</returns>
+    public async Task SendLongAsync(byte[] clientId, long data) => await SendLongAsync(GetClient(clientId), data);
 
     /// <summary>Sends a string package to a client</summary>
     /// <remarks>The string is sent in UTF-16 format</remarks>
@@ -267,6 +259,25 @@ public partial class TcpMsServer(IPAddress address, ushort port, ServerSettings 
         await client.SendPackageAsync(new(Package.PackageTypes.Data, Package.DataTypes.Bool, parsedData));
     }
 
+    internal async Task SendByteAsync(Client client, byte data) {
+
+        EnsureIsListening();
+
+        byte[] parsedData = [data];
+        EncryptIfNecessary(ref parsedData);
+        await client.SendPackageAsync(new(Package.PackageTypes.Data, Package.DataTypes.Byte, parsedData));
+    }
+
+    internal async Task SendShortAsync(Client client, short data) {
+
+        EnsureIsListening();
+
+        byte[] parsedData = new byte[2];
+        BinaryPrimitives.WriteInt16BigEndian(parsedData, data);
+        EncryptIfNecessary(ref parsedData);
+        await client.SendPackageAsync(new(Package.PackageTypes.Data, Package.DataTypes.Short, parsedData));
+    }
+
     internal async Task SendIntAsync(Client client, int data) {
 
         EnsureIsListening();
@@ -275,6 +286,16 @@ public partial class TcpMsServer(IPAddress address, ushort port, ServerSettings 
         BinaryPrimitives.WriteInt32BigEndian(parsedData, data);
         EncryptIfNecessary(ref parsedData);
         await client.SendPackageAsync(new(Package.PackageTypes.Data, Package.DataTypes.Int, parsedData));
+    }
+
+    internal async Task SendLongAsync(Client client, long data) {
+
+        EnsureIsListening();
+
+        byte[] parsedData = new byte[8];
+        BinaryPrimitives.WriteInt64BigEndian(parsedData, data);
+        EncryptIfNecessary(ref parsedData);
+        await client.SendPackageAsync(new(Package.PackageTypes.Data, Package.DataTypes.Long, parsedData));
     }
 
     internal async Task SendStringAsync(Client client, string data) {
@@ -311,6 +332,32 @@ public partial class TcpMsServer(IPAddress address, ushort port, ServerSettings 
 
     }
 
+    /// <summary>Send a byte package to all clients</summary>
+    public void BroadcastByte(byte data) {
+
+        EnsureIsListening();
+
+        List<Task> tasks = [];
+
+        foreach (Client client in Clients.Values)
+            tasks.Add(SendByteAsync(client, data));
+
+        Task.WaitAll([.. tasks]);
+    }
+
+    /// <summary>Send a <see cref="short"/> package to all clients</summary>
+    public void BroadcastShort(short data) {
+
+        EnsureIsListening();
+
+        List<Task> tasks = [];
+
+        foreach (Client client in Clients.Values)
+            tasks.Add(SendShortAsync(client, data));
+
+        Task.WaitAll([.. tasks]);
+    }
+
     /// <summary>Send an int package to all clients</summary>
     public void BroadcastInt(int data) {
 
@@ -320,6 +367,19 @@ public partial class TcpMsServer(IPAddress address, ushort port, ServerSettings 
 
         foreach (Client client in Clients.Values)
             tasks.Add(SendIntAsync(client, data));
+
+        Task.WaitAll([.. tasks]);
+    }
+
+    /// <summary>Send a <see cref="long"/> package to all clients</summary>
+    public void BroadcastLong(long data) {
+
+        EnsureIsListening();
+
+        List<Task> tasks = [];
+
+        foreach (Client client in Clients.Values)
+            tasks.Add(SendLongAsync(client, data));
 
         Task.WaitAll([.. tasks]);
     }
@@ -365,6 +425,34 @@ public partial class TcpMsServer(IPAddress address, ushort port, ServerSettings 
         await Task.WhenAll([.. tasks]);
     }
 
+    /// <summary>Send a byte package to all clients</summary>
+    /// <returns>A task that finishes when the package was sent to all clients</returns>
+    public async Task BroadcastByteAsync(byte data) {
+
+        EnsureIsListening();
+
+        List<Task> tasks = [];
+
+        foreach (Client client in Clients.Values)
+            tasks.Add(SendByteAsync(client, data));
+
+        await Task.WhenAll([.. tasks]);
+    }
+
+    /// <summary>Send a <see cref="short"/> package to all clients</summary>
+    /// <returns>A task that finishes when the package was sent to all clients</returns>
+    public async Task BroadcastShortAsync(short data) {
+
+        EnsureIsListening();
+
+        List<Task> tasks = [];
+
+        foreach (Client client in Clients.Values)
+            tasks.Add(SendShortAsync(client, data));
+
+        await Task.WhenAll([.. tasks]);
+    }
+
     /// <summary>Send an int package to all clients</summary>
     /// <returns>A task that finishes when the package was sent to all clients</returns>
     public async Task BroadcastIntAsync(int data) {
@@ -375,6 +463,20 @@ public partial class TcpMsServer(IPAddress address, ushort port, ServerSettings 
 
         foreach (Client client in Clients.Values)
             tasks.Add(SendIntAsync(client, data));
+
+        await Task.WhenAll([.. tasks]);
+    }
+
+    /// <summary>Send a <see cref="long"/> package to all clients</summary>
+    /// <returns>A task that finishes when the package was sent to all clients</returns>
+    public async Task BroadcastLongAsync(long data) {
+
+        EnsureIsListening();
+
+        List<Task> tasks = [];
+
+        foreach (Client client in Clients.Values)
+            tasks.Add(SendLongAsync(client, data));
 
         await Task.WhenAll([.. tasks]);
     }

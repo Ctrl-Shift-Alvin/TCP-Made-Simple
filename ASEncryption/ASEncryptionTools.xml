@@ -38,8 +38,16 @@
             <summary>Copy the <see cref="P:AlvinSoft.Cryptography.SecurePassword.SecureString"/> character bytes to a string</summary>
             <returns>The string containing the <see cref="P:AlvinSoft.Cryptography.SecurePassword.SecureString"/> chars</returns>
         </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.Equals(System.Object)">
+            <summary>
+            Check if the underlying unicode chars of this instance and <paramref name="obj"/> are identical.
+            </summary>
+            <remarks><paramref name="obj"/> can be a <see cref="T:AlvinSoft.Cryptography.SecurePassword"/>, <see cref="P:AlvinSoft.Cryptography.SecurePassword.SecureString"/>, <see cref="T:System.String"/> or <see cref="T:System.Char"/>[] instance.</remarks>
+            <param name="obj"></param>
+            <returns>true if <paramref name="obj"/> is a text type and the char bytes are identical.</returns>
+        </member>
         <member name="M:AlvinSoft.Cryptography.SecurePassword.Dispose">
-            <summary>Dispose of this instance</summary>
+            <summary>Disposes of this instance</summary>
         </member>
         <member name="T:AlvinSoft.Cryptography.AesEncryption">
             <summary>Represents the Key and IV of an Aes encryption. Optionally holds a password and a salt to derive the key from.</summary>

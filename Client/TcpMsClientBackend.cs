@@ -10,6 +10,7 @@ namespace AlvinSoft.TcpMs;
 //"Backend"
 partial class TcpMsClient {
 
+    #region Fields
     /// <summary>The hostname used to connect to the server.</summary>
     public string Hostname => hostname;
     /// <summary>The port used to connect to the server.</summary>
@@ -26,6 +27,7 @@ partial class TcpMsClient {
 
     /// <summary>A token used for timeouts that is cancelled after 2 seconds.</summary>
     protected static CancellationToken TimeoutToken => new CancellationTokenSource(2000).Token;
+    #endregion
 
     private void EnsureIsConnected() {
         ArgumentNullException.ThrowIfNull(Client, nameof(Client));
@@ -185,7 +187,7 @@ partial class TcpMsClient {
             Package iv = await Client.ReceivePackageAsync(Package.PackageTypes.EncrIV, TimeoutToken);
             Package salt = await Client.ReceivePackageAsync(Package.PackageTypes.EncrSalt, TimeoutToken);
 
-            Encryption = new(Settings.Password, salt.Data, iv.Data);
+            Encryption = new(Settings.Password, rsa.DecryptBytes(salt.Data), rsa.DecryptBytes(iv.Data));
         } catch {
             await SendError();
         }
@@ -233,24 +235,28 @@ partial class TcpMsClient {
             //if the first run was already performed, set i = 1
             for (int i = firstPackage.HasValue ? 1 : 0; i < Settings.ConnectionTestTries; i++) {
 
+                //read test package
                 packageBuffer = await Client.ReceivePackageAsync(Package.PackageTypes.Test, TimeoutToken);
 
+                //decrypt if necessary
                 byte[] data;
                 if (Settings.EncryptionEnabled)
                     data = Encryption.DecryptBytes(packageBuffer.Data);
                 else
                     data = packageBuffer.Data;
 
+                //create response (random bytes with length of test package)
                 byte[] response = RandomGen.GetBytes(data.Length);
                 response[Random.Shared.Next(0, response.Length)] = data[Random.Shared.Next(0, data.Length)]; //assign random byte from data to random byte in response
 
+                //encrypt if necessary
                 if (Settings.EncryptionEnabled)
                     data = Encryption.EncryptBytes(response);
                 else
                     data = response;
 
                 //send response
-                await Client.SendPackageAsync(new Package(Package.PackageTypes.Test, Package.DataTypes.Blob, response, false));
+                await Client.SendPackageAsync(new Package(Package.PackageTypes.Test, Package.DataTypes.Blob, data, false));
                 
                 //read result
                 packageBuffer = await Client.ReceivePackageAsync(cancellationToken: TimeoutToken);
@@ -349,58 +355,81 @@ partial class TcpMsClient {
     /// <summary>Handles data packages and invokes the relevant event</summary>
     private void HandleData(Package package) {
 
-        void DecryptIfNeccessary(ref byte[] buffer) {
-            if (Settings.EncryptionEnabled)
-                buffer = Encryption.DecryptBytes(buffer);
-        }
+        byte[] data = package.Data;
+        DecryptIfNeccessary(ref data);
+
+        object value;
 
         switch (package.DataType) {
 
             case Package.DataTypes.Bool: {
 
-                byte[] data = package.Data;
-                DecryptIfNeccessary(ref data);
-
-                bool value = BitConverter.ToBoolean(data);
-                OnBoolReceived(value);
+                value = BitConverter.ToBoolean(data);
 
             }
-            return;
+            break;
+
+            case Package.DataTypes.Byte: {
+
+                value = data[0];
+
+            }
+            break;
+
+            case Package.DataTypes.Short: {
+
+                value = BinaryPrimitives.ReadInt16BigEndian(data);
+
+            }
+            break;
 
             case Package.DataTypes.Int: {
 
-                byte[] data = package.Data;
-                DecryptIfNeccessary(ref data);
-
-                int value = BinaryPrimitives.ReadInt32BigEndian(data);
-                OnIntReceived(value);
+                value = BinaryPrimitives.ReadInt32BigEndian(data);
 
             }
-            return;
+            break;
+
+            case Package.DataTypes.Long: {
+
+                value = BinaryPrimitives.ReadInt64BigEndian(data);
+
+            }
+            break;
 
             case Package.DataTypes.String: {
 
-                byte[] data = package.Data;
-                DecryptIfNeccessary(ref data);
-
-                string value = Encoding.Unicode.GetString(data);
-                OnStringReceived(value);
+                value = Encoding.Unicode.GetString(data);
 
             }
-            return;
+            break;
 
             case Package.DataTypes.Blob: {
 
-                byte[] data = package.Data;
-                DecryptIfNeccessary(ref data);
-
-                OnBlobReceived(data);
+                OnDataReceived(data, Package.DataTypes.Blob);
 
             }
             return;
-        
+
+            default: {
+                value = null;
+            }
+            break;
         }
 
+        OnDataReceived(value, package.DataType);
+
+    }
+
+    private void EncryptIfNeccessary(ref byte[] buffer) {
+        if (Settings.EncryptionEnabled)
+            buffer = Encryption.EncryptBytes(buffer);
+    }
+
+
+    private void DecryptIfNeccessary(ref byte[] buffer) {
+        if (Settings.EncryptionEnabled)
+            buffer = Encryption.DecryptBytes(buffer);
     }
 
     #endregion

@@ -56,13 +56,15 @@ partial class TcpMsServer {
 
         ListenerCancellationTokenSource = new();
 
-        while(ClientCountOk() && !ListenerCancellationTokenSource.IsCancellationRequested) {
+        try {
+            while (ClientCountOk() && !ListenerCancellationTokenSource.IsCancellationRequested) {
 
-            TcpClient client = await Listener.AcceptTcpClientAsync(ListenerCancellationTokenSource.Token); //accept connection
+                TcpClient client = await Listener.AcceptTcpClientAsync(ListenerCancellationTokenSource.Token); //accept connection
 
-            if (client != null)
-                _ = Task.Run(() => ConnectionHandler(client)); //handle connection
-        }
+                if (client != null)
+                    _ = Task.Run(() => ConnectionHandler(client)); //handle connection
+            }
+        } catch { }
 
         ListenerCancellationTokenSource?.Cancel();
 
@@ -201,7 +203,7 @@ partial class TcpMsServer {
 
     }
 
-    /// <summary>Tries to send the server's encryption to a client and sends an error package if something fails</summary>
+    /// <summary>Tries to send the server's encryption to a client and sends an error package if something fails.</summary>
     private async Task<bool> SendEncryption(Client client) {
 
         try {
@@ -266,19 +268,28 @@ partial class TcpMsServer {
 
             //generate random bytes of random length from 1 to 5
             byte[] test = RandomGen.GetBytes(Random.Shared.Next(1, 6));
-            EncryptIfNecessary(ref test);
+
+            //encrypt test
+            byte[] data;
+            if (Settings.EncryptionEnabled)
+                data = Encryption.EncryptBytes(test);
+            else
+                data = test;
 
             //send the test package
-            await client.SendPackageAsync(new Package(Package.PackageTypes.Test, Package.DataTypes.Blob, test, false));
+            await client.SendPackageAsync(new Package(Package.PackageTypes.Test, Package.DataTypes.Blob, data, false));
 
             //read the response
             Package response = await client.ReceivePackageAsync(Package.PackageTypes.Test, TimeoutToken);
 
             //decrypt if neccessary
-            byte[] responseData = response.Data;
-            DecryptIfNecessary(ref responseData);
+            if (Settings.EncryptionEnabled)
+                data = Encryption.DecryptBytes(response.Data);
+            else
+                data = response.Data;
 
-            if (responseData.Length == test.Length && responseData.Any(k => test.Any(l => l == k))) {
+            if (data.Length == test.Length && data.Any(k => test.Any(l => l == k))) {
+                await client.SendPackageAsync(new Package(Package.PackageTypes.TestTrySuccess));
                 continue;
             } else {
                 await SendError(client);
@@ -300,14 +311,14 @@ partial class TcpMsServer {
 
     }
 
-    /// <summary>Closes the client and removes it from the clients list</summary>
+    /// <summary>Closes the client and removes it from the clients list.</summary>
     private void CloseClient(Client client) {
         client.Close();
         Clients.TryRemove(client.ID, out _);
     }
 
-    /// <summary>Closes a connected client</summary>
-    /// <remarks>Closes the client, removes it from the clients list and calls <c>OnClientDisconnected</c></remarks>
+    /// <summary>Closes a connected client.</summary>
+    /// <remarks>Closes the client, removes it from the clients list and calls <c>OnClientDisconnected</c>.</remarks>
     private void HandleDisconnect(Client client) {
         CloseClient(client);
         OnClientDisconnected(client.ID);
@@ -323,29 +334,58 @@ partial class TcpMsServer {
     /// <summary>Processes data packages and calls the relevant event</summary>
     private void HandleDataPackage(Client client, Package package) {
 
+        byte[] data = package.Data;
+        DecryptIfNecessary(ref data);
+
         switch (package.DataType) {
 
             case Package.DataTypes.Bool: {
 
-                OnBoolReceived(client.ID, BitConverter.ToBoolean(package.Data));
+                bool value = BitConverter.ToBoolean(data);
+                OnDataReceived(client.ID, value, Package.DataTypes.Bool);
 
             } break;
+
+            case Package.DataTypes.Byte: {
+
+                OnDataReceived(client.ID, data[0], Package.DataTypes.Byte);
+
+            }
+            break;
+
+            case Package.DataTypes.Short: {
+
+                short value = BinaryPrimitives.ReadInt16BigEndian(data);
+                OnDataReceived(client.ID, value, Package.DataTypes.Short);
+
+            }
+            break;
 
             case Package.DataTypes.Int: {
 
-                OnIntReceived(client.ID, BinaryPrimitives.ReadInt32BigEndian(package.Data));
+                int value = BinaryPrimitives.ReadInt32BigEndian(data);
+                OnDataReceived(client.ID, value, Package.DataTypes.Int);
 
             } break;
 
+            case Package.DataTypes.Long: {
+
+                long value = BinaryPrimitives.ReadInt64BigEndian(data);
+                OnDataReceived(client.ID, value, Package.DataTypes.Long);
+
+            }
+            break;
+
             case Package.DataTypes.String: {
 
-                OnStringReceived(client.ID, Encoding.Unicode.GetString(package.Data));
+                string value = Encoding.Unicode.GetString(data);
+                OnDataReceived(client.ID, value, Package.DataTypes.String);
 
             } break;
 
             case Package.DataTypes.Blob: {
 
-                OnBlobReceived(client.ID, package.Data);
+                OnDataReceived(client.ID, data, Package.DataTypes.Blob);
 
             } break;
         
