@@ -33,7 +33,14 @@ partial class TcpMsServer {
     public bool IsAllowingConnections => ListenerCancellationTokenSource != null && !ListenerCancellationTokenSource.IsCancellationRequested;
     private CancellationTokenSource ListenerCancellationTokenSource;
 
-    private static CancellationToken TimeoutToken => new CancellationTokenSource(2000).Token;
+    /// <summary>A token used for timeouts that is cancelled after 2 seconds.</summary>
+    protected static CancellationToken TimeoutToken => new CancellationTokenSource(
+#if DEBUG
+        20000
+#else
+        2000
+#endif
+        ).Token;
 
     #endregion
 
@@ -87,8 +94,7 @@ partial class TcpMsServer {
                 await SendEncryption(client);
             }
 
-            if (!await ValidateConnection(client))
-                await HandlePanic(client);
+            await VerifyConnectionAsync(client);
 
             if (Settings.PingIntervalMs > 0)
                 _ = new RepeatingAction(TimeSpan.FromMilliseconds(Settings.PingIntervalMs), async () => await Ping(client), client.CancelTokenSource.Token);
@@ -148,7 +154,7 @@ partial class TcpMsServer {
 
             HandleDisconnect(client);
 
-        } catch {
+        } catch (Exception e) {
 
             if (client.IsConnected) {
                 //something went wrong so send an error, but we can't know what is wrong, so restart the loop and allow the client to declare panic if needed
@@ -183,7 +189,7 @@ partial class TcpMsServer {
             await client.SendPackageAsync(new Package(Package.PackageTypes.AuthRSAPublicKey, Package.DataTypes.Blob, publicKey, false));
 
             //receive encrypted password
-            var encryptedPassword = await client.ReceivePackageAsync(Package.PackageTypes.AuthEncryptedPassword, TimeoutToken);
+            var encryptedPassword = await client.ReceivePackageAsync(Package.PackageTypes.AuthEncryptedPassword, cancellationToken: TimeoutToken);
 
             //decrypt password
             string password = rsa.DecryptString(encryptedPassword.Data);
@@ -209,7 +215,7 @@ partial class TcpMsServer {
         try {
 
             //read rsa key, so the iv and salt can be encrypted
-            var clientRsaPubKeyPackage = await client.ReceivePackageAsync(Package.PackageTypes.EncrRSAPublicKey, TimeoutToken);
+            var clientRsaPubKeyPackage = await client.ReceivePackageAsync(Package.PackageTypes.EncrRSAPublicKey, cancellationToken: TimeoutToken);
 
             RSAEncryption rsa = new(RSAKey.ImportPublicKey(clientRsaPubKeyPackage.Data));
 
@@ -264,37 +270,53 @@ partial class TcpMsServer {
 
         EnsureIsListening();
 
-        for (int i = 0; i < Settings.ConnectionTestTries; i++) {
+        try {
 
-            //generate random bytes of random length from 1 to 5
-            byte[] test = RandomGen.GetBytes(Random.Shared.Next(1, 6));
+            await client.WriteSync.WaitAsync();
+            await client.ReadSync.WaitAsync();
 
-            //encrypt test
-            byte[] data;
-            if (Settings.EncryptionEnabled)
-                data = Encryption.EncryptBytes(test);
-            else
-                data = test;
+            for (int i = 0; i < Settings.ConnectionTestTries; i++) {
 
-            //send the test package
-            await client.SendPackageAsync(new Package(Package.PackageTypes.Test, Package.DataTypes.Blob, data, false));
+                //generate random bytes of random length from 1 to 5
+                byte[] test = RandomGen.GetBytes(Random.Shared.Next(1, 6));
 
-            //read the response
-            Package response = await client.ReceivePackageAsync(Package.PackageTypes.Test, TimeoutToken);
+                //encrypt test
+                byte[] data;
+                if (Settings.EncryptionEnabled)
+                    data = Encryption.EncryptBytes(test);
+                else
+                    data = test;
 
-            //decrypt if neccessary
-            if (Settings.EncryptionEnabled)
-                data = Encryption.DecryptBytes(response.Data);
-            else
-                data = response.Data;
+                //send the test package
+                await client.SendPackageAsync(new Package(Package.PackageTypes.Test, Package.DataTypes.Blob, data, false), false);
 
-            if (data.Length == test.Length && data.Any(k => test.Any(l => l == k))) {
-                await client.SendPackageAsync(new Package(Package.PackageTypes.TestTrySuccess));
-                continue;
-            } else {
-                await SendError(client);
-                return false;
+                //read the response
+                Package response = await client.ReceivePackageAsync(Package.PackageTypes.Test, useSync: false, cancellationToken: TimeoutToken);
+
+                //decrypt if neccessary
+                if (Settings.EncryptionEnabled)
+                    data = Encryption.DecryptBytes(response.Data);
+                else
+                    data = response.Data;
+
+                if (data.Length == test.Length && data.Any(k => test.Any(l => l == k))) {
+                    await client.SendPackageAsync(new Package(Package.PackageTypes.TestTrySuccess), false);
+                    continue;
+                } else {
+                    await SendError(client, false);
+                    return false;
+                }
+
             }
+
+        } catch {
+            await SendError(client);
+            return false;
+
+        } finally {
+
+            client.WriteSync.Release();
+            client.ReadSync.Release();
 
         }
 
@@ -303,11 +325,11 @@ partial class TcpMsServer {
     }
 
     /// <summary>Sends an error package to the client</summary>
-    private async Task SendError(Client client) {
+    private async Task SendError(Client client, bool useSync = true) {
 
         EnsureIsListening();
 
-        await client.SendPackageAsync(new Package(Package.PackageTypes.Error));
+        await client.SendPackageAsync(new Package(Package.PackageTypes.Error), useSync);
 
     }
 

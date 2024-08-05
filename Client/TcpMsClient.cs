@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using System.Threading;
 using System.Net.Sockets;
 using System.Buffers.Binary;
+using System.Runtime.Versioning;
 
 namespace AlvinSoft.TcpMs;
 
@@ -11,6 +12,7 @@ namespace AlvinSoft.TcpMs;
 /// <remarks>Creates a new instance and assigns the address and port that is used to connect to the server. Does not start the connection process.</remarks>
 /// <param name="hostname">The hostname that the client will connect to</param>
 /// <param name="port">The TCP port that the client will connect to</param>
+[UnsupportedOSPlatform("browser")]
 public partial class TcpMsClient(string hostname, ushort port) {
 
     #region Events
@@ -119,6 +121,7 @@ public partial class TcpMsClient(string hostname, ushort port) {
     /// <summary>Test this connection until a test is successful, using test packages, and call panic for each failed test</summary>
     /// <returns>A task that finishes when the client's connection was either verified or terminated</returns>
     public async Task<bool> VerifyConnectionAsync() {
+        await Client.SendPackageAsync(new Package(Package.PackageTypes.Test));
         return await ValidateConnection();
     }
 

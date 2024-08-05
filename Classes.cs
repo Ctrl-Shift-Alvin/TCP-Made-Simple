@@ -38,35 +38,35 @@ public class ServerSettings(string password) {
     public int Version { get; internal set; } = CurrentVersion;
 
     /// <summary>The amount of test iterations when testing a client's connection.</summary>
-    public byte ConnectionTestTries { get; internal set; } = 3;
+    public byte ConnectionTestTries { get; set; } = 3;
 
     /// <summary>Encrypt the data in the packages.</summary>
-    public bool EncryptionEnabled { get; internal set; } = true;
+    public bool EncryptionEnabled { get; set; } = true;
 
     #endregion
 
     /// <summary>The password used for encryption.</summary>
     /// <remarks>Irrelevant if <see cref="EncryptionEnabled"/> is false.</remarks>
-    public SecurePassword Password { get; internal set; } = new(password ?? string.Empty);
+    public SecurePassword Password { get; set; } = new(password ?? string.Empty);
 
     /// <summary>The maximum amount of clients allowed at the same time.</summary>
     /// <remarks>This field is not disclosed to the clients</remarks>
-    public int MaxClients { get; internal set; } = 15;
+    public int MaxClients { get; set; } = 15;
 
     /// <summary>The number of times a client can declare panic before deemed unstable and disconnected.</summary>
-    public int MaxPanicsPerClient { get; internal set; } = 5;
+    public int MaxPanicsPerClient { get; set; } = 5;
         
     /// <summary>The interval at which to ping clients.</summary>
     /// <remarks>Set to 0 to disable pinging</remarks>
-    public int PingIntervalMs { get; internal set; } = 10000;
+    public int PingIntervalMs { get; set; } = 10000;
 
     /// <summary>The maximum time to wait for a pong before disconnecting a client.</summary>
     /// <remarks>Must be lower than <see cref="PingIntervalMs"/>. Irrelevant if <see cref="PingIntervalMs"/> is 0 or less.</remarks>
-    public int PingTimeoutMs { get; internal set; } = 8000;
+    public int PingTimeoutMs { get; set; } = 8000;
 
     /// <summary>The maximum time to wait before cancelling an async read operation after receiving the first byte.</summary>
     /// <remarks>The provided cancellation token is used only for the first byte. After that a new one is created.</remarks>
-    public int ReceiveTimeoutMs { get; internal set; } = 2000;
+    public int ReceiveTimeoutMs { get; set; } = 2000;
 
     /// <summary>Import an instance that was exported using <see cref="GetBytes()"/>.</summary>
     public void Update(byte[] data) {
@@ -160,33 +160,44 @@ internal class Client(byte[] id, ServerSettings settings, TcpClient client) {
     internal CancellationTokenSource CancelTokenSource { get; } = new CancellationTokenSource();
     internal CancellationToken TimeoutToken => new CancellationTokenSource(settings.ReceiveTimeoutMs).Token;
 
-    internal void SendPackage(Package package) {
+    internal void SendPackage(Package package, bool useSync = true) {
 
         if (!IsConnected)
             return;
 
-        WriteSync.Wait();
-        using (WriteSync)
+        if (useSync) {
+
+            WriteSync.Wait();
+            using (WriteSync)
+                Stream.Write(package.GetBytes());
+
+        } else {
             Stream.Write(package.GetBytes());
+        }
 
     }
-    internal async Task SendPackageAsync(Package package) {
+    internal async Task SendPackageAsync(Package package, bool useSync = true) {
 
         if (!IsConnected)
             return;
 
-        await WriteSync.WaitAsync();
-        using (WriteSync)
+        if (useSync) {
+
+            await WriteSync.WaitAsync();
+            using (WriteSync)
+                await Stream.WriteAsync(package.GetBytes());
+
+        } else {
             await Stream.WriteAsync(package.GetBytes());
+        }
     }
 
-    internal Package ReceivePackage(Package.PackageTypes expectedType = Package.PackageTypes.None) {
+    internal Package ReceivePackage(Package.PackageTypes expectedType = Package.PackageTypes.None, bool useSync = true) {
 
         if (!IsConnected)
             return new(Package.PackageTypes.None);
 
-        ReadSync.Wait();
-        using (ReadSync) {
+        Package Receive() {
 
             Package.PackageTypes packageType = (Package.PackageTypes)Stream.ReadByte();
 
@@ -211,15 +222,24 @@ internal class Client(byte[] id, ServerSettings settings, TcpClient client) {
             return new(packageType, dataType, dataBuffer, false);
         }
 
+        if (useSync) {
+
+            ReadSync.Wait();
+            using (ReadSync)
+                return Receive();
+
+        } else {
+            return Receive();
+        }
+
 
     }
-    internal async Task<Package> ReceivePackageAsync(Package.PackageTypes expectedType = Package.PackageTypes.None, CancellationToken cancellationToken = default) {
+    internal async Task<Package> ReceivePackageAsync(Package.PackageTypes expectedType = Package.PackageTypes.None, bool useSync = true, CancellationToken cancellationToken = default) {
 
         if (!IsConnected)
             return new(Package.PackageTypes.None);
 
-        await ReadSync.WaitAsync(cancellationToken);
-        using (ReadSync) {
+        async Task<Package> Receive() {
 
             byte[] packageTypeBuffer = new byte[1];
             await Stream.ReadAsync(packageTypeBuffer, cancellationToken);
@@ -247,7 +267,16 @@ internal class Client(byte[] id, ServerSettings settings, TcpClient client) {
             }
 
             return new(packageType, dataType, dataBuffer, false);
+        }
 
+        if (useSync) {
+
+            await ReadSync.WaitAsync(cancellationToken);
+            using (ReadSync)
+                return await Receive();
+
+        } else {
+            return await Receive();
         }
     }
 
@@ -272,6 +301,8 @@ internal class Client(byte[] id, ServerSettings settings, TcpClient client) {
         Stream = null;
         Tcp.Close();
         Tcp.Dispose();
+        ReadSync.ActualDispose();
+        WriteSync.ActualDispose();
     }
 
     /// <summary>Increment <see cref="PanicCount"/></summary>
@@ -323,16 +354,16 @@ public readonly struct Package {
 #pragma warning restore CS1591
 
     /// <summary>The type of <c>Data</c></summary>
-    public DataTypes DataType { get; }
+    public readonly DataTypes DataType { get; } = DataTypes.Empty;
 
     /// <summary>The purpose of the package</summary>
-    public PackageTypes PackageType { get; }
+    public readonly PackageTypes PackageType { get; } = PackageTypes.None;
 
     /// <summary>The data without the header</summary>
-    public byte[]? Data { get; } = null;
+    public readonly byte[]? Data { get; } = null;
 
     /// <summary>Shorthand for <c>Data.Length</c></summary>
-    public int DataLength => Data == null ? 0 : Data.Length;
+    public readonly int DataLength { get; } = 0;
 
     #endregion
     #region Operators
@@ -341,8 +372,8 @@ public readonly struct Package {
     /// <returns>false if the left package contents are the same as the right's; otherwise true.</returns>
     public static bool operator !=(Package left, Package right) => !left.Equals(right);
     #endregion
-
     #region Constructors
+
     /// <summary>
     /// Create an empty package instance.
     /// </summary>
@@ -351,6 +382,7 @@ public readonly struct Package {
         PackageType = type;
         DataType = DataTypes.Empty;
         Data = null;
+        DataLength = 0;
     }
 
     /// <summary>
@@ -361,87 +393,17 @@ public readonly struct Package {
         PackageType = packageType;
         DataType = dataType;
 
-        if (data == null || data.Length == 0) {
+        if (data == null || data.Length < 1) {
             Data = null;
+            DataLength = 0;
         } else {
             Data = new byte[data.Length];
             if (copyData)
                 Array.Copy(data, Data, data.Length);
             else
                 Data = data;
+            DataLength = data.Length;
         }
-    }
-
-    /// <summary>
-    /// Create an instance and copy the unicode bytes of <paramref name="data"/> to it.
-    /// </summary>
-    public Package(PackageTypes packageType, string data) : this(packageType, DataTypes.String, Encoding.Unicode.GetBytes(data)) { }
-    /// <summary>
-    /// Create an instance and copy 1 or 0 to it based on <paramref name="data"/>
-    /// </summary>
-    /// <remarks><see cref="Data"/> will be of length 1.</remarks>
-    public Package(PackageTypes packageType, bool data) {
-
-        PackageType = packageType;
-        DataType = DataTypes.Int;
-
-        Data = BitConverter.GetBytes(data);
-
-    }
-
-    /// <summary>
-    /// Create an instance and copy <paramref name="data"/> to it.
-    /// </summary>
-    /// <remarks><see cref="Data"/> will be of length 1.</remarks>
-    public Package(PackageTypes packageType, byte data) {
-
-        PackageType = packageType;
-        DataType = DataTypes.Byte;
-
-        Data = [data];
-
-    }
-
-    /// <summary>
-    /// Create an instance and copy the big endian representiation of <paramref name="data"/> to it.
-    /// </summary>
-    /// <remarks><see cref="Data"/> will be of length 2.</remarks>
-    public Package(PackageTypes packageType, short data) {
-
-        PackageType = packageType;
-        DataType = DataTypes.Short;
-
-        Data = new byte[2];
-        BinaryPrimitives.WriteInt16BigEndian(Data, data);
-
-    }
-
-    /// <summary>
-    /// Create an instance and copy the big endian representiation of <paramref name="data"/> to it.
-    /// </summary>
-    /// <remarks><see cref="Data"/> will be of length 4.</remarks>
-    public Package(PackageTypes packageType, int data) {
-
-        PackageType = packageType;
-        DataType = DataTypes.Int;
-
-        Data = new byte[4];
-        BinaryPrimitives.WriteInt32BigEndian(Data, data);
-
-    }
-
-    /// <summary>
-    /// Create an instance and copy the big endian representiation of <paramref name="data"/> to it.
-    /// </summary>
-    /// <remarks><see cref="Data"/> will be of length 8.</remarks>
-    public Package(PackageTypes packageType, long data) {
-
-        PackageType = packageType;
-        DataType = DataTypes.Long;
-
-        Data = new byte[8];
-        BinaryPrimitives.WriteInt64BigEndian(Data, data);
-
     }
 
     #endregion
@@ -458,7 +420,7 @@ public readonly struct Package {
 
         BinaryPrimitives.WriteInt32BigEndian(bytes.AsSpan(2), DataLength);
 
-        if (Data != null) //same as DataLength > 0, but this avoids compiler warning
+        if (Data != null) //same as DataLength > 0 (DataLength == 0 means Data = null), but this avoids compiler warning
             Array.Copy(Data, 0, bytes, 6, Data.Length);
 
         return bytes;

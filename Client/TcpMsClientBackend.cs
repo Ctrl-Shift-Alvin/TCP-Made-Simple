@@ -18,7 +18,7 @@ partial class TcpMsClient {
     internal Client Client { get; set; }
 
     /// <summary>The server's settings used to communicate. Do not change this manually, the client handles this automatically.</summary>
-    public ServerSettings Settings = ServerSettings.None;
+    public ServerSettings Settings { get; internal set; } = ServerSettings.None;
     /// <summary>The encryption instance used to encrypt/decrypt data for/from the server. null if encryption is not used.</summary>
     public AesEncryption Encryption { get; protected set; } = null;
 
@@ -26,7 +26,14 @@ partial class TcpMsClient {
     public bool IsConnected => Client.IsConnected;
 
     /// <summary>A token used for timeouts that is cancelled after 2 seconds.</summary>
-    protected static CancellationToken TimeoutToken => new CancellationTokenSource(2000).Token;
+    protected static CancellationToken TimeoutToken => new CancellationTokenSource(
+#if DEBUG
+        20000
+#else
+        2000
+#endif
+        ).Token;
+
     #endregion
 
     private void EnsureIsConnected() {
@@ -44,7 +51,7 @@ partial class TcpMsClient {
 
         try {
 
-            Package settingsPackage = await Client.ReceivePackageAsync(Package.PackageTypes.NewSettings, TimeoutToken);
+            Package settingsPackage = await Client.ReceivePackageAsync(Package.PackageTypes.NewSettings, cancellationToken: TimeoutToken);
             Settings.Update(settingsPackage.Data);
 
             if (Settings.EncryptionEnabled) {
@@ -153,7 +160,7 @@ partial class TcpMsClient {
                 return false;
 
             //read public rsa key
-            buffer = await Client.ReceivePackageAsync(Package.PackageTypes.AuthRSAPublicKey, TimeoutToken);
+            buffer = await Client.ReceivePackageAsync(Package.PackageTypes.AuthRSAPublicKey, cancellationToken: TimeoutToken);
 
             RSAEncryption rsa = new(RSAKey.ImportPublicKey(buffer.Data));
 
@@ -184,8 +191,8 @@ partial class TcpMsClient {
             byte[] rsaPublicKey = rsa.Key.ExportPublicKey();
             await Client.SendPackageAsync(new Package(Package.PackageTypes.EncrRSAPublicKey, Package.DataTypes.Blob, rsaPublicKey, false));
 
-            Package iv = await Client.ReceivePackageAsync(Package.PackageTypes.EncrIV, TimeoutToken);
-            Package salt = await Client.ReceivePackageAsync(Package.PackageTypes.EncrSalt, TimeoutToken);
+            Package iv = await Client.ReceivePackageAsync(Package.PackageTypes.EncrIV, cancellationToken: TimeoutToken);
+            Package salt = await Client.ReceivePackageAsync(Package.PackageTypes.EncrSalt, cancellationToken: TimeoutToken);
 
             Encryption = new(Settings.Password, rsa.DecryptBytes(salt.Data), rsa.DecryptBytes(iv.Data));
         } catch {
@@ -201,6 +208,9 @@ partial class TcpMsClient {
         EnsureIsConnected();
 
         try {
+
+            await Client.WriteSync.WaitAsync();
+            await Client.ReadSync.WaitAsync();
 
             Package packageBuffer;
 
@@ -224,10 +234,10 @@ partial class TcpMsClient {
                     data = response;
 
                 //send response
-                await Client.SendPackageAsync(new Package(Package.PackageTypes.Test, Package.DataTypes.Blob, response));
+                await Client.SendPackageAsync(new Package(Package.PackageTypes.Test, Package.DataTypes.Blob, response), false);
 
                 //read result
-                packageBuffer = await Client.ReceivePackageAsync(cancellationToken: TimeoutToken);
+                packageBuffer = await Client.ReceivePackageAsync(useSync: false, cancellationToken: TimeoutToken);
                 if (packageBuffer.PackageType == Package.PackageTypes.Error)
                     return false;
             }
@@ -236,7 +246,7 @@ partial class TcpMsClient {
             for (int i = firstPackage.HasValue ? 1 : 0; i < Settings.ConnectionTestTries; i++) {
 
                 //read test package
-                packageBuffer = await Client.ReceivePackageAsync(Package.PackageTypes.Test, TimeoutToken);
+                packageBuffer = await Client.ReceivePackageAsync(Package.PackageTypes.Test, false, TimeoutToken);
 
                 //decrypt if necessary
                 byte[] data;
@@ -256,18 +266,22 @@ partial class TcpMsClient {
                     data = response;
 
                 //send response
-                await Client.SendPackageAsync(new Package(Package.PackageTypes.Test, Package.DataTypes.Blob, data, false));
-                
+                await Client.SendPackageAsync(new Package(Package.PackageTypes.Test, Package.DataTypes.Blob, data, false), false);
+
                 //read result
-                packageBuffer = await Client.ReceivePackageAsync(cancellationToken: TimeoutToken);
+                packageBuffer = await Client.ReceivePackageAsync(useSync: false, cancellationToken: TimeoutToken);
                 if (packageBuffer.PackageType == Package.PackageTypes.Error)
                     return false;
 
             }
 
             return true;
+
         } catch {
             return false;
+        } finally {
+            Client.WriteSync.Release();
+            Client.ReadSync.Release();
         }
 
     }
@@ -283,7 +297,7 @@ partial class TcpMsClient {
             await Client.SendPackageAsync(new Package(Package.PackageTypes.Panic));
 
             //await response
-            _ = await Client.ReceivePackageAsync(Package.PackageTypes.Panic, TimeoutToken);
+            _ = await Client.ReceivePackageAsync(Package.PackageTypes.Panic, cancellationToken: TimeoutToken);
 
             await HandlePanic();
 
@@ -334,7 +348,7 @@ partial class TcpMsClient {
                 await Client.Stream.FlushAsync();
 
                 //receive settings
-                Package settingsPackage = await Client.ReceivePackageAsync(Package.PackageTypes.NewSettings, TimeoutToken); //if max panics is reached, error package is sent, so this throws an exception
+                Package settingsPackage = await Client.ReceivePackageAsync(Package.PackageTypes.NewSettings, cancellationToken: TimeoutToken); //if max panics is reached, error package is sent, so this throws an exception
                 Settings.Update(settingsPackage.Data);
 
                 await Authenticate();

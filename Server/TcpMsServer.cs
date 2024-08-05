@@ -4,6 +4,7 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Runtime.Versioning;
 
 namespace AlvinSoft.TcpMs;
 
@@ -13,6 +14,7 @@ namespace AlvinSoft.TcpMs;
 /// <param name="address">The IP address that the server listens to</param>
 /// <param name="port">The TCP port that the server uses</param>
 /// <param name="settings">The settings that the server uses to send and process data</param>
+[UnsupportedOSPlatform("browser")]
 public partial class TcpMsServer(IPAddress address, ushort port, ServerSettings settings) {
 
     #region Events
