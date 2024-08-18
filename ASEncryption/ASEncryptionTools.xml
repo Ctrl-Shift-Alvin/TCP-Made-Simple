@@ -46,6 +46,48 @@
             <param name="obj"></param>
             <returns>true if <paramref name="obj"/> is a text type and the char bytes are identical.</returns>
         </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Equality(AlvinSoft.Cryptography.SecurePassword,AlvinSoft.Cryptography.SecurePassword)">
+            <returns>true if both sides contain the same unicode bytes; otherwise false.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Inequality(AlvinSoft.Cryptography.SecurePassword,AlvinSoft.Cryptography.SecurePassword)">
+            <returns>false if both sides contain the same unicode bytes; otherwise true.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Equality(AlvinSoft.Cryptography.SecurePassword,System.String)">
+            <returns>true if both sides contain the same unicode bytes; otherwise false.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Inequality(AlvinSoft.Cryptography.SecurePassword,System.String)">
+            <returns>false if both sides contain the same unicode bytes; otherwise true.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Equality(System.String,AlvinSoft.Cryptography.SecurePassword)">
+            <returns>true if both sides contain the same unicode bytes; otherwise false.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Inequality(System.String,AlvinSoft.Cryptography.SecurePassword)">
+            <returns>false if both sides contain the same unicode bytes; otherwise true.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Equality(System.Security.SecureString,AlvinSoft.Cryptography.SecurePassword)">
+            <returns>true if both sides contain the same unicode bytes; otherwise false.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Inequality(System.Security.SecureString,AlvinSoft.Cryptography.SecurePassword)">
+            <returns>false if both sides contain the same unicode bytes; otherwise true.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Equality(AlvinSoft.Cryptography.SecurePassword,System.Security.SecureString)">
+            <returns>true if both sides contain the same unicode bytes; otherwise false.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Inequality(AlvinSoft.Cryptography.SecurePassword,System.Security.SecureString)">
+            <returns>false if both sides contain the same unicode bytes; otherwise true.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Equality(System.Char[],AlvinSoft.Cryptography.SecurePassword)">
+            <returns>true if both sides contain the same unicode bytes; otherwise false.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Inequality(System.Char[],AlvinSoft.Cryptography.SecurePassword)">
+            <returns>false if both sides contain the same unicode bytes; otherwise true.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Equality(AlvinSoft.Cryptography.SecurePassword,System.Char[])">
+            <returns>true if both sides contain the same unicode bytes; otherwise false.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Inequality(AlvinSoft.Cryptography.SecurePassword,System.Char[])">
+            <returns>false if both sides contain the same unicode bytes; otherwise true.</returns>
+        </member>
         <member name="M:AlvinSoft.Cryptography.SecurePassword.Dispose">
             <summary>Disposes of this instance</summary>
         </member>

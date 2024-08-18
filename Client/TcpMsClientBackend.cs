@@ -1,5 +1,10 @@
 ﻿using System;
 using System.Buffers.Binary;
+using System.Diagnostics;
+using System.Linq;
+using System.Linq.Expressions;
+using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,15 +20,12 @@ partial class TcpMsClient {
     public string Hostname => hostname;
     /// <summary>The port used to connect to the server.</summary>
     public ushort Port => port;
-    internal Client Client { get; set; }
+    internal Client ClientInstance { get; set; }
 
-    /// <summary>The server's settings used to communicate. Do not change this manually, the client handles this automatically.</summary>
+    /// <summary>The server's settings used to communicate.</summary>
     public ServerSettings Settings { get; internal set; } = ServerSettings.None;
     /// <summary>The encryption instance used to encrypt/decrypt data for/from the server. null if encryption is not used.</summary>
     public AesEncryption Encryption { get; protected set; } = null;
-
-    /// <summary>Shorthand for <c>this.Client.IsConnected</c></summary>
-    public bool IsConnected => Client.IsConnected;
 
     /// <summary>A token used for timeouts that is cancelled after 2 seconds.</summary>
     protected static CancellationToken TimeoutToken => new CancellationTokenSource(
@@ -36,283 +38,343 @@ partial class TcpMsClient {
 
     #endregion
 
-    private void EnsureIsConnected() {
-        ArgumentNullException.ThrowIfNull(Client, nameof(Client));
-        ArgumentNullException.ThrowIfNull(Client.Tcp, nameof(Client.Tcp));
-        if (!Client.IsConnected)
-            throw new ArgumentException("Client is not connected");
-    }
+    internal class Client(TcpMsClient tcpMsClient, TcpClient tcpClient) : PackageHandler(tcpClient.GetStream()) {
 
-    /// <summary>Connects to the server and authenticates if neccessary. If this succeeds, the listener loop starts.</summary>
-    /// <returns>true if the connection and authentication succeeded; otherwise false.</returns>
-    private async Task<bool> ConnectionHandler() {
+        private TcpMsClient TcpMsClientInstance { get; } = tcpMsClient;
+        private TcpClient TcpClientInstance { get; } = tcpClient;
 
-        EnsureIsConnected();
+        private ServerSettings Settings => TcpMsClientInstance.Settings;
 
-        try {
+        private AesEncryption Encryption => TcpMsClientInstance.Encryption;
 
-            Package settingsPackage = await Client.ReceivePackageAsync(Package.PackageTypes.NewSettings, cancellationToken: TimeoutToken);
-            Settings.Update(settingsPackage.Data);
+        #region Overrides
+        protected override CancellationToken TimeoutToken => new CancellationTokenSource(TcpMsClientInstance.Settings.ReceiveTimeoutMs).Token;
 
-            if (Settings.EncryptionEnabled) {
+        protected override async Task OnReceivedInternalPackage(Package package) {
 
-                if (!await Authenticate()) {
-                    Close();
+            switch (package.PackageType) {
+
+                case Package.PackageTypes.Disconnect: {
+                    TcpMsClientInstance.HandleDisconnect();
+                }
+                break;
+                case Package.PackageTypes.Settings: {
+
+                }
+                break;
+                case Package.PackageTypes.Test: {
+
+                }
+                break;
+                case Package.PackageTypes.Ping: {
+
+                }
+                break;
+
+
+            }
+
+        }
+
+        protected override void OnReceivedDataPackage(Package package) {
+
+            byte[] data = package.Data;
+            TcpMsClientInstance.DecryptIfNeccessary(ref data);
+
+            object value;
+
+            switch (package.DataType) {
+
+                case Package.DataTypes.Bool: {
+
+                    value = BitConverter.ToBoolean(data);
+
+                }
+                break;
+
+                case Package.DataTypes.Byte: {
+
+                    value = data[0];
+
+                }
+                break;
+
+                case Package.DataTypes.Short: {
+
+                    value = BinaryPrimitives.ReadInt16BigEndian(data);
+
+                }
+                break;
+
+                case Package.DataTypes.Int: {
+
+                    value = BinaryPrimitives.ReadInt32BigEndian(data);
+
+                }
+                break;
+
+                case Package.DataTypes.Long: {
+
+                    value = BinaryPrimitives.ReadInt64BigEndian(data);
+
+                }
+                break;
+
+                case Package.DataTypes.String: {
+
+                    value = Encoding.Unicode.GetString(data);
+
+                }
+                break;
+
+                case Package.DataTypes.Blob: {
+
+                    TcpMsClientInstance.OnDataReceived(data, Package.DataTypes.Blob);
+
+                }
+                return;
+
+                default: {
+                    value = null;
+                }
+                break;
+            }
+
+            TcpMsClientInstance.OnDataReceived(value, package.DataType);
+        }
+
+        protected override async Task<bool> OnError(Errors error) {
+
+            switch (error) {
+
+                case Errors.ReadTimeout: {
+
+                }
+                break;
+
+                case Errors.CannotWrite: {
+
+                }
+                return false;
+
+                case Errors.CannotRead: {
+
+                }
+                return false;
+
+                case Errors.ErrorPackage: {
+
+                }
+                break;
+
+                case Errors.UnexpectedPackage: {
+
+                }
+                break;
+
+            }
+
+        }
+
+        public override async Task StopAsync(bool awaitTasks = true) {
+            TcpClientInstance.Close();
+            await base.StopAsync(awaitTasks);
+        }
+        #endregion
+
+        #region Manual
+
+        /// <summary>Tries to authenticate the client and sends an error package if something fails</summary>
+        /// <returns><see langword="true"/> if the authentication was successful; otherwise <see langword="false"/>.</returns>
+        public async Task<bool> Manual_Authenticate() {
+
+            if (Settings.Password.IsEmpty)
+                return false;
+
+            try {
+
+                AesEncryption encryptionIn;
+                Package saltIn = await ObtainExpectedPackageAsync(Package.PackageTypes.Auth_Salt);
+                Package ivIn = await ObtainExpectedPackageAsync(Package.PackageTypes.Auth_IV);
+                Package encryptedChallengeIn = await ObtainExpectedPackageAsync(Package.PackageTypes.Auth_Challenge);
+
+                encryptionIn = new(Settings.Password, saltIn.Data, ivIn.Data);
+                byte[] challengeIn = encryptionIn.DecryptBytes(encryptedChallengeIn.Data);
+                byte[] challengeInHash = SHA512.HashData(challengeIn);
+
+                await DispatchPackageAsync(new Package(Package.PackageTypes.Auth_Response, Package.DataTypes.Blob, challengeInHash));
+
+                Package response = await ObtainPackageAsync();
+                if (response.PackageType != Package.PackageTypes.Auth_Success)
+                    return false;
+
+                AesEncryption encryptionOut = new() {
+                    Password = Settings.Password
+                };
+                byte[] challengeOut = RandomGen.GetBytes(32);
+                byte[] encryptedChallengeOut = encryptionOut.EncryptBytes(challengeOut);
+                byte[] challengeOutHash = SHA512.HashData(challengeOut);
+
+                await DispatchPackageAsync(new Package(Package.PackageTypes.Auth_Salt, Package.DataTypes.Blob, encryptionOut.Salt));
+                await DispatchPackageAsync(new Package(Package.PackageTypes.Auth_IV, Package.DataTypes.Blob, encryptionOut.IV));
+                await DispatchPackageAsync(new Package(Package.PackageTypes.Auth_Challenge, Package.DataTypes.Blob, encryptedChallengeOut));
+
+                response = await ObtainExpectedPackageAsync(Package.PackageTypes.Auth_Response);
+
+                if (Enumerable.SequenceEqual(challengeOutHash, response.Data)) {
+                    await DispatchPackageAsync(new Package(Package.PackageTypes.Auth_Success));
+                    return true;
+                } else {
+                    await DispatchPackageAsync(new Package(Package.PackageTypes.Auth_Failure));
                     return false;
                 }
+
+            } catch (TcpMsErrorPackageException) {
+
+                return false;
+
+            } catch (TcpMsUnexpectedPackageException) {
+
+                return false;
+
+            } catch (TcpMsTimeoutException) {
+
+                return false;
+
+            } catch (InvalidOperationException) {
+
+                return false;
+            }
+
+        }
+
+        public async Task<OperationResult> Manual_ReceiveEncryption() {
+
+            try {
+
+                RSAEncryption rsa = new();
+
+                //send public key that the server uses to encrypt encryption data
+                byte[] rsaPublicKey = rsa.Key.ExportPublicKey();
+                await DispatchPackageAsync(new Package(Package.PackageTypes.EncrRSAPublicKey, Package.DataTypes.Blob, rsaPublicKey, false));
+
+                Package iv = await ObtainExpectedPackageAsync(Package.PackageTypes.EncrIV);
+                Package salt = await ObtainExpectedPackageAsync(Package.PackageTypes.EncrSalt);
+
+                TcpMsClientInstance.Encryption = new(Settings.Password, rsa.DecryptBytes(salt.Data), rsa.DecryptBytes(iv.Data));
+
+                return OperationResult.Succeeded;
+
+            } catch (InvalidOperationException) {
+
+                return OperationResult.Disconnected;
+
+            } catch (TcpMsTimeoutException) {
+
+                return OperationResult.Error;
+
+            } catch (TcpMsErrorPackageException) {
+
+                return OperationResult.Failed;
+
+            } catch (TcpMsUnexpectedPackageException) {
+
+                return OperationResult.Failed;
+
+            }
+        }
+
+        public async Task<OperationResult> Manual_ValidateConnection() {
+
+            try {
+
+                Package packageBuffer;
+
+                for (int i = 0; i < Settings.ConnectionTestTries; i++) {
+
+                    //read test package
+                    packageBuffer = await ObtainExpectedPackageAsync(Package.PackageTypes.Test);
+
+                    //decrypt if necessary
+                    byte[] data;
+                    if (Settings.EncryptionEnabled)
+                        data = Encryption.DecryptBytes(packageBuffer.Data);
+                    else
+                        data = packageBuffer.Data;
+
+                    //create response (random bytes with length of test package)
+                    byte[] response = RandomGen.GetBytes(data.Length);
+                    response[Random.Shared.Next(0, response.Length)] = data[Random.Shared.Next(0, data.Length)]; //assign random byte from data to random byte in response
+
+                    //encrypt if necessary
+                    if (Settings.EncryptionEnabled)
+                        data = Encryption.EncryptBytes(response);
+                    else
+                        data = response;
+
+                    //send response
+                    await DispatchPackageAsync(new Package(Package.PackageTypes.Test, Package.DataTypes.Blob, data, false));
+
+                    //read result
+                    packageBuffer = await ObtainExpectedPackageAsync(Package.PackageTypes.TestTrySuccess);
+
+                } 
+
+                return OperationResult.Succeeded;
+
+            } catch (InvalidOperationException) {
+
+                return OperationResult.Disconnected;
+
+            } catch (TcpMsTimeoutException) {
+
+                return OperationResult.Error;
+
+            } catch (TcpMsErrorPackageException) {
+
+                return OperationResult.Failed;
+
+            } catch (TcpMsUnexpectedPackageException) {
+
+                return OperationResult.Failed;
+
+            }
+
+        }
+
+        public async Task<OperationResult> Manual_HandlePanic() {
+
+            try {
+
+                Send(new Package(Package.PackageTypes.Panic));
+
+                //receive settings
+                Package settingsPackage = await Client.ReceivePackageAsync(Package.PackageTypes.Settings, cancellationToken: TimeoutToken); //if max panics is reached, error package is sent, so this throws an exception
+                Settings.Update(settingsPackage.Data);
+
+                await Manual_Authenticate();
                 await ReceiveEncryption();
 
-            }
-
-            //also verifies if the encryption data was received and resends it
-            if (await ValidateConnection()) {
-                _ = Task.Run(ListenerLoop);
-                OnConnected();
-                return true;
-            } else {
-                Close();
-                return false;
-            }
 
 
-        } catch {
+                if (!await ValidateConnection())
 
-            Close();
-            return false;
+                    OnPanic();
 
-        }
-
-
-    }
-
-    private async Task ListenerLoop() {
-
-        EnsureIsConnected();
-
-        try {
-            Package buffer;
-            while (IsConnected) {
-
-                buffer = await Client.ReceivePackageAsync(cancellationToken: Client.CancelTokenSource.Token);
-
-                switch (buffer.PackageType) {
-
-                    case Package.PackageTypes.Disconnect: {
-                        HandleDisconnect();
-                    } return;
-
-                    case Package.PackageTypes.NewSettings: {
-                        HandleNewSettings(buffer);
-                    } break;
-
-                    case Package.PackageTypes.Test: {
-                        if (!await ValidateConnection(buffer))
-                            await SendPanic();
-                    } break;
-
-                    case Package.PackageTypes.Ping: {
-                        await HandlePing();
-                    } break;
-
-                    case Package.PackageTypes.Panic: {
-                        await HandlePanic();
-                    } break;
-
-                    case Package.PackageTypes.Data: {
-                        HandleData(buffer);
-                    } break;
-
-                    default: {
-                        await SendPanic();
-                    } break;
-                
-                }
-
-            }
-        } catch {
-
-            //if the client is still connected but something went wrong, sent a panic request
-            if (IsConnected) {
-
-                await SendPanic(); //calls HandleDisconnect() if not successful
-
-                //if panic worked, restart the listener
-                if (IsConnected)
-                    _ = Task.Run(ListenerLoop);
-
-            } else {
+            } catch {
                 HandleDisconnect();
             }
-
         }
 
-    }
-
-    /// <summary>Tries to authenticate the client and sends an error package if something fails</summary>
-    /// <returns>true if the authentication was successful; otherwise false.</returns>
-    private async Task<bool> Authenticate() {
-
-        EnsureIsConnected();
-
-        Package buffer;
-        try {
-            if (Settings.Password == null)
-                return false;
-
-            //read public rsa key
-            buffer = await Client.ReceivePackageAsync(Package.PackageTypes.AuthRSAPublicKey, cancellationToken: TimeoutToken);
-
-            RSAEncryption rsa = new(RSAKey.ImportPublicKey(buffer.Data));
-
-            //encrypt and send password using public rsa key
-            byte[] encryptedPassword = rsa.EncryptString(Settings.Password.ToString());
-            await Client.SendPackageAsync(new Package(Package.PackageTypes.AuthEncryptedPassword, Package.DataTypes.Blob, encryptedPassword, false));
-
-            //read result
-            buffer = await Client.ReceivePackageAsync(cancellationToken: TimeoutToken);
-
-        } catch {
-            await SendError();
-            return false;
-        }
-        return buffer.PackageType == Package.PackageTypes.AuthSuccess;
-
-    }
-
-    /// <summary>Reads the server's encryption and sends an error package if something goes wrong.</summary>
-    private async Task ReceiveEncryption() {
-
-        EnsureIsConnected();
-
-        try {
-            RSAEncryption rsa = new();
-
-            //send public key that the server uses to encrypt encryption data
-            byte[] rsaPublicKey = rsa.Key.ExportPublicKey();
-            await Client.SendPackageAsync(new Package(Package.PackageTypes.EncrRSAPublicKey, Package.DataTypes.Blob, rsaPublicKey, false));
-
-            Package iv = await Client.ReceivePackageAsync(Package.PackageTypes.EncrIV, cancellationToken: TimeoutToken);
-            Package salt = await Client.ReceivePackageAsync(Package.PackageTypes.EncrSalt, cancellationToken: TimeoutToken);
-
-            Encryption = new(Settings.Password, rsa.DecryptBytes(salt.Data), rsa.DecryptBytes(iv.Data));
-        } catch {
-            await SendError();
-        }
-    }
-
-    /// <summary>Reads a validation package and validates the package sent by the server. The validation happens <see cref="ServerSettings.ConnectionTestTries"/> times.</summary>
-    /// <param name="firstPackage">null to validate normally; assign if the first validation package was already read</param>
-    /// <returns>true if all validations succeeded; otherwise false.</returns>
-    private async Task<bool> ValidateConnection(Package? firstPackage = null) {
-
-        EnsureIsConnected();
-
-        try {
-
-            await Client.WriteSync.WaitAsync();
-            await Client.ReadSync.WaitAsync();
-
-            Package packageBuffer;
-
-            //if a package is already provided, do the first test without "reading it again" (you would be reading the next package)
-            if (firstPackage.HasValue) {
-
-                packageBuffer = firstPackage.Value;
-
-                byte[] data;
-                if (Settings.EncryptionEnabled)
-                    data = Encryption.DecryptBytes(packageBuffer.Data);
-                else
-                    data = packageBuffer.Data;
-
-                byte[] response = RandomGen.GetBytes(data.Length);
-                response[Random.Shared.Next(0, response.Length)] = data[Random.Shared.Next(0, data.Length)]; //assign random byte from data to random byte in response
-
-                if (Settings.EncryptionEnabled)
-                    data = Encryption.EncryptBytes(response);
-                else
-                    data = response;
-
-                //send response
-                await Client.SendPackageAsync(new Package(Package.PackageTypes.Test, Package.DataTypes.Blob, response), false);
-
-                //read result
-                packageBuffer = await Client.ReceivePackageAsync(useSync: false, cancellationToken: TimeoutToken);
-                if (packageBuffer.PackageType == Package.PackageTypes.Error)
-                    return false;
-            }
-
-            //if the first run was already performed, set i = 1
-            for (int i = firstPackage.HasValue ? 1 : 0; i < Settings.ConnectionTestTries; i++) {
-
-                //read test package
-                packageBuffer = await Client.ReceivePackageAsync(Package.PackageTypes.Test, false, TimeoutToken);
-
-                //decrypt if necessary
-                byte[] data;
-                if (Settings.EncryptionEnabled)
-                    data = Encryption.DecryptBytes(packageBuffer.Data);
-                else
-                    data = packageBuffer.Data;
-
-                //create response (random bytes with length of test package)
-                byte[] response = RandomGen.GetBytes(data.Length);
-                response[Random.Shared.Next(0, response.Length)] = data[Random.Shared.Next(0, data.Length)]; //assign random byte from data to random byte in response
-
-                //encrypt if necessary
-                if (Settings.EncryptionEnabled)
-                    data = Encryption.EncryptBytes(response);
-                else
-                    data = response;
-
-                //send response
-                await Client.SendPackageAsync(new Package(Package.PackageTypes.Test, Package.DataTypes.Blob, data, false), false);
-
-                //read result
-                packageBuffer = await Client.ReceivePackageAsync(useSync: false, cancellationToken: TimeoutToken);
-                if (packageBuffer.PackageType == Package.PackageTypes.Error)
-                    return false;
-
-            }
-
-            return true;
-
-        } catch {
-            return false;
-        } finally {
-            Client.WriteSync.Release();
-            Client.ReadSync.Release();
+        public async Task Manual_DispatchError() {
+            try {
+                await DispatchPackageAsync(Package.Error);
+            } catch (InvalidOperationException) { }
         }
 
-    }
+        #endregion
 
-    /// <summary>Sends a panic request and calls <see cref="HandlePanic"/>. Disconnects the client if unsuccessful.</summary>
-    /// <returns>A task that finishes when the panic is over</returns>
-    private async Task SendPanic() {
 
-        EnsureIsConnected();
-
-        try {
-            //send panic
-            await Client.SendPackageAsync(new Package(Package.PackageTypes.Panic));
-
-            //await response
-            _ = await Client.ReceivePackageAsync(Package.PackageTypes.Panic, cancellationToken: TimeoutToken);
-
-            await HandlePanic();
-
-        } catch {
-
-            //panic didn't work, something's broken, fuck it
-            HandleDisconnect();
-
-        }
-    }
-
-    /// <summary>Sends an error package</summary>
-    private async Task SendError() {
-        EnsureIsConnected();
-        await Client.SendPackageAsync(new Package(Package.PackageTypes.Error));
     }
 
     #region Handlers
@@ -322,117 +384,9 @@ partial class TcpMsClient {
         OnDisconnect();
     }
 
-    /// <summary>Sends back a pong package</summary>
-    private async Task HandlePing() {
-        await Client.SendPackageAsync(new Package(Package.PackageTypes.Pong));
-    }
-
-    /// <summary>Updates the server settings using <paramref name="data"/></summary>
+    /// <summary>Updates the server settings using <paramref name="data"/>.</summary>
     private void HandleNewSettings(Package data) {
         Settings.Update(data.Data);
-    }
-
-    /// <summary>Handles a panic request</summary>
-    /// <remarks>Keeps calling panic (updates settings, authenticates and rereads the encryption, then validates) until the validation is successful. When the server disconnects the client, the client is closed and <c>OnDisconnect</c> is called.</remarks>
-    /// <returns>A task that finishes when the panic request is over. Check <see cref="IsConnected"/> to see if panic was successful.</returns>
-    private async Task HandlePanic() {
-
-        try {
-
-            start: {
-
-                EnsureIsConnected();
-
-                Client.CallPanic();
-
-                await Client.Stream.FlushAsync();
-
-                //receive settings
-                Package settingsPackage = await Client.ReceivePackageAsync(Package.PackageTypes.NewSettings, cancellationToken: TimeoutToken); //if max panics is reached, error package is sent, so this throws an exception
-                Settings.Update(settingsPackage.Data);
-
-                await Authenticate();
-                await ReceiveEncryption();
-
-            }
-
-            if (!await ValidateConnection())
-                goto start;
-
-            OnPanic();
-
-        } catch {
-            HandleDisconnect();
-        }
-    }
-
-    /// <summary>Handles data packages and invokes the relevant event</summary>
-    private void HandleData(Package package) {
-
-        byte[] data = package.Data;
-        DecryptIfNeccessary(ref data);
-
-        object value;
-
-        switch (package.DataType) {
-
-            case Package.DataTypes.Bool: {
-
-                value = BitConverter.ToBoolean(data);
-
-            }
-            break;
-
-            case Package.DataTypes.Byte: {
-
-                value = data[0];
-
-            }
-            break;
-
-            case Package.DataTypes.Short: {
-
-                value = BinaryPrimitives.ReadInt16BigEndian(data);
-
-            }
-            break;
-
-            case Package.DataTypes.Int: {
-
-                value = BinaryPrimitives.ReadInt32BigEndian(data);
-
-            }
-            break;
-
-            case Package.DataTypes.Long: {
-
-                value = BinaryPrimitives.ReadInt64BigEndian(data);
-
-            }
-            break;
-
-            case Package.DataTypes.String: {
-
-                value = Encoding.Unicode.GetString(data);
-
-            }
-            break;
-
-            case Package.DataTypes.Blob: {
-
-                OnDataReceived(data, Package.DataTypes.Blob);
-
-            }
-            return;
-
-            default: {
-                value = null;
-            }
-            break;
-        }
-
-        OnDataReceived(value, package.DataType);
-
     }
 
     private void EncryptIfNeccessary(ref byte[] buffer) {

@@ -1,14 +1,13 @@
 ﻿using System;
 using System.IO;
-using System.Buffers.Binary;
-using System.Net.Sockets;
-using System.Threading;
 using System.Linq;
-using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
-using AlvinSoft.Cryptography;
+using System.Collections.Concurrent;
+using System.Net.Sockets;
+using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
-using System.Buffers;
+using AlvinSoft.Cryptography;
 
 namespace AlvinSoft.TcpMs;
 
@@ -66,7 +65,7 @@ public class ServerSettings(string password) {
 
     /// <summary>The maximum time to wait before cancelling an async read operation after receiving the first byte.</summary>
     /// <remarks>The provided cancellation token is used only for the first byte. After that a new one is created.</remarks>
-    public int ReceiveTimeoutMs { get; set; } = 2000;
+    public int ReceiveTimeoutMs { get; set; } = 500;
 
     /// <summary>Import an instance that was exported using <see cref="GetBytes()"/>.</summary>
     public void Update(byte[] data) {
@@ -123,193 +122,6 @@ public class ServerSettings(string password) {
 
 }
 
-/// <summary>Represents a client that is connected to a server</summary>
-internal class Client(byte[] id, ServerSettings settings, TcpClient client) {
-    /// <summary>The client's unique ID</summary>
-    internal byte[] ID { get; } = id;
-
-    /// <summary>The tcp client that is used for communication.</summary>
-    internal TcpClient Tcp = client;
-
-    /// <summary>The stream that is used to send data.</summary>
-    internal NetworkStream Stream = client.GetStream();
-
-    /// <summary>Checks if the underlying TcpClient is still connected</summary>
-    /// <returns>true if the client is still connected; otherwise false</returns>
-    public bool IsConnected => !CancelTokenSource.IsCancellationRequested && Tcp.Connected;
-
-    internal int PanicCount { get; private set; } = 0;
-
-
-    internal bool pingStatus;
-    internal object pingSync = new();
-    internal bool PingStatus {
-        get {
-            lock (pingSync)
-                return pingStatus;
-        }
-        set {
-            lock (pingSync)
-                pingStatus = value;
-        }
-    }
-
-    internal SemaphoreSlimUsing WriteSync { get; } = new();
-    internal SemaphoreSlimUsing ReadSync { get; } = new();
-
-    internal CancellationTokenSource CancelTokenSource { get; } = new CancellationTokenSource();
-    internal CancellationToken TimeoutToken => new CancellationTokenSource(settings.ReceiveTimeoutMs).Token;
-
-    internal void SendPackage(Package package, bool useSync = true) {
-
-        if (!IsConnected)
-            return;
-
-        if (useSync) {
-
-            WriteSync.Wait();
-            using (WriteSync)
-                Stream.Write(package.GetBytes());
-
-        } else {
-            Stream.Write(package.GetBytes());
-        }
-
-    }
-    internal async Task SendPackageAsync(Package package, bool useSync = true) {
-
-        if (!IsConnected)
-            return;
-
-        if (useSync) {
-
-            await WriteSync.WaitAsync();
-            using (WriteSync)
-                await Stream.WriteAsync(package.GetBytes());
-
-        } else {
-            await Stream.WriteAsync(package.GetBytes());
-        }
-    }
-
-    internal Package ReceivePackage(Package.PackageTypes expectedType = Package.PackageTypes.None, bool useSync = true) {
-
-        if (!IsConnected)
-            return new(Package.PackageTypes.None);
-
-        Package Receive() {
-
-            Package.PackageTypes packageType = (Package.PackageTypes)Stream.ReadByte();
-
-            if (expectedType != Package.PackageTypes.None && packageType != expectedType) {
-                TcpMsProtocolException.ThrowUnexpectedPackage(expectedType, packageType);
-                DiscardPackageRest();
-            }
-
-            Package.DataTypes dataType = (Package.DataTypes)Stream.ReadByte();
-
-            byte[] dataLengthBuffer = new byte[4];
-            Stream.Read(dataLengthBuffer);
-            int dataLength = BinaryPrimitives.ReadInt32BigEndian(dataLengthBuffer);
-
-            byte[] dataBuffer;
-            if (dataLength > 0) {
-                dataBuffer = new byte[dataLength];
-                Stream.Read(dataBuffer);
-            } else {
-                dataBuffer = null;
-            }
-            return new(packageType, dataType, dataBuffer, false);
-        }
-
-        if (useSync) {
-
-            ReadSync.Wait();
-            using (ReadSync)
-                return Receive();
-
-        } else {
-            return Receive();
-        }
-
-
-    }
-    internal async Task<Package> ReceivePackageAsync(Package.PackageTypes expectedType = Package.PackageTypes.None, bool useSync = true, CancellationToken cancellationToken = default) {
-
-        if (!IsConnected)
-            return new(Package.PackageTypes.None);
-
-        async Task<Package> Receive() {
-
-            byte[] packageTypeBuffer = new byte[1];
-            await Stream.ReadAsync(packageTypeBuffer, cancellationToken);
-            Package.PackageTypes packageType = (Package.PackageTypes)packageTypeBuffer[0];
-
-            if (expectedType != Package.PackageTypes.None && packageType != expectedType) {
-                TcpMsProtocolException.ThrowUnexpectedPackage(expectedType, packageType);
-                DiscardPackageRest();
-            }
-
-            byte[] dataTypeBuffer = new byte[1];
-            await Stream.ReadAsync(dataTypeBuffer, TimeoutToken);
-            Package.DataTypes dataType = (Package.DataTypes)dataTypeBuffer[0];
-
-            byte[] dataLengthBuffer = new byte[4];
-            await Stream.ReadAsync(dataLengthBuffer, TimeoutToken);
-            int dataLength = BinaryPrimitives.ReadInt32BigEndian(dataLengthBuffer);
-
-            byte[] dataBuffer;
-            if (dataLength > 0) {
-                dataBuffer = new byte[dataLength];
-                await Stream.ReadAsync(dataBuffer, TimeoutToken);
-            } else {
-                dataBuffer = null;
-            }
-
-            return new(packageType, dataType, dataBuffer, false);
-        }
-
-        if (useSync) {
-
-            await ReadSync.WaitAsync(cancellationToken);
-            using (ReadSync)
-                return await Receive();
-
-        } else {
-            return await Receive();
-        }
-    }
-
-    private void DiscardPackageRest() {
-
-        ReadSync.WaitAsync();
-        using (ReadSync) {
-
-            _ = Stream.ReadByte(); //data type
-            byte[] dataLengthBuffer = new byte[4];
-            Stream.Read(dataLengthBuffer); //data length
-
-            int dataLength = BinaryPrimitives.ReadInt32BigEndian(dataLengthBuffer);
-
-            Stream.Read(new byte[dataLength], 0, dataLength); //data
-        }
-    }
-
-    /// <summary>Closes this connection and disposes of it</summary>
-    internal void Close() {
-        CancelTokenSource.Cancel();
-        Stream = null;
-        Tcp.Close();
-        Tcp.Dispose();
-        ReadSync.ActualDispose();
-        WriteSync.ActualDispose();
-    }
-
-    /// <summary>Increment <see cref="PanicCount"/></summary>
-    internal void CallPanic() => PanicCount++;
-}
-
-
 /// <summary>
 /// Represents a package that was/will be sent over a network.
 /// </summary>
@@ -333,19 +145,28 @@ public readonly struct Package {
     public enum PackageTypes : byte {
         None,
         Error,
+        DisconnectRequest,
         Disconnect,
-        SubpackageHeader,
-        Subpackage,
+        Settings,
         Data,
-        NewSettings,
-        AuthRSAPublicKey,
-        AuthEncryptedPassword,
-        AuthSuccess,
+
+        Auth_Request,
+        Auth_Salt,
+        Auth_IV,
+        Auth_Challenge,
+        Auth_Response,
+        Auth_Success,
+        Auth_Failure,
+
+        EncrRequest,
         EncrRSAPublicKey,
         EncrIV,
         EncrSalt,
+
+        TestRequest,
         Test,
         TestTrySuccess,
+
         Ping,
         Pong,
         Panic
@@ -365,6 +186,13 @@ public readonly struct Package {
     /// <summary>Shorthand for <c>Data.Length</c></summary>
     public readonly int DataLength { get; } = 0;
 
+    internal readonly bool IsInternalPackage => PackageType != PackageTypes.Data;
+
+    /// <summary>
+    /// Returns true if <see cref="PackageType"/> == None.
+    /// </summary>
+    public readonly bool IsEmpty => PackageType == PackageTypes.None;
+
     #endregion
     #region Operators
     /// <returns>true if the left package contents are the same as the right's; otherwise false.</returns>
@@ -372,7 +200,7 @@ public readonly struct Package {
     /// <returns>false if the left package contents are the same as the right's; otherwise true.</returns>
     public static bool operator !=(Package left, Package right) => !left.Equals(right);
     #endregion
-    #region Constructors
+    #region Ctor
 
     /// <summary>
     /// Create an empty package instance.
@@ -407,6 +235,15 @@ public readonly struct Package {
     }
 
     #endregion
+
+    /// <summary>
+    /// Returns an empty package of type <see cref="PackageTypes.None"/>. Shorthand for <c>new Package()</c>.
+    /// </summary>
+    public static Package Empty => new();
+    /// <summary>
+    /// Returns an error package. Shorthand for <c>new Package(PackageTypes.Error)</c>.
+    /// </summary>
+    public static Package Error => new(PackageTypes.Error);
 
     /// <summary>
     /// Create a byte array that represents this package.
@@ -461,12 +298,551 @@ public readonly struct Package {
 }
 #nullable restore
 
+internal abstract class PackageHandler(NetworkStream targetStream) {
+
+    private NetworkStream Stream { get; set; } = targetStream;
+
+    protected virtual CancellationToken TimeoutToken => new CancellationTokenSource(500).Token;
+
+
+    private ConcurrentQueue<Package> QueueOut;
+
+    private Task ObtainHandlerTask;
+    private CancellationTokenSource ObtainHandlerCancel;
+    private ManualResetEventSlim ObtainHandlerPause;
+    private SemaphoreSlimUsing ObtainHandlerSync;
+
+    private ConcurrentQueue<Package> InternalQueue;
+    private Task InternalHandlerTask;
+    private CancellationTokenSource InternalHandlerCancel;
+    private ManualResetEventSlim InternalHandlerPause;
+
+    private Task DispatchHandlerTask;
+    private CancellationTokenSource DispatchHandlerCancel;
+    private ManualResetEventSlim DispatchHandlerPause;
+    private SemaphoreSlimUsing DispatchHandlerSync;
+
+
+    public enum Errors : byte {
+        None,
+        ReadTimeout,
+        CannotWrite,
+        CannotRead,
+        Disconnected,
+        ErrorPackage,
+        UnexpectedPackage,
+        PingTimeout,
+        IncorrectPackage
+    }
+
+    public enum OperationResult : byte {
+        /// <summary>Everything succeeded.</summary>
+        Succeeded,
+        /// <summary>No error occured, but the operation was not successful.</summary>
+        Failed,
+        /// <summary>An error occured.</summary>
+        Error,
+        /// <summary>The stream is not connected.</summary>
+        Disconnected
+    }
+
+    protected async Task Error(Errors error, bool isDispatch) {
+
+        //pause the OTHER thread (e.g. obtain thread calls, so we pause dispatch, since obtain is already technically paused)
+        if (isDispatch)
+            await PauseObtainAsync();
+        else
+            await PauseDispatchAsync();
+
+        //handle error
+        if (await OnError(error)) {
+
+            //if error was resolved, resume the other thread and continue
+            if (isDispatch)
+                ResumeObtain();
+            else
+                ResumeDispatch();
+
+        } else {
+
+            //if error was not resolved, cancel all threads (the threads will dispose of resources)
+            await DispatchHandlerCancel.CancelAsync();
+            await ObtainHandlerCancel.CancelAsync();
+
+        }
+
+    }
+
+    public async Task<bool> Error(Errors error) {
+
+        await PauseObtainAsync();
+        await PauseDispatchAsync();
+
+        //flush buffers (a fresh start is always good in bad times :)
+        await Stream.FlushAsync();
+
+        //handle error
+        if (await OnError(error)) {
+
+            ResumeObtain();
+            ResumeDispatch();
+            return true;
+
+        } else {
+
+            //if error was not resolved, cancel all threads (the threads will dispose of resources)
+            await DispatchHandlerCancel.CancelAsync();
+            await ObtainHandlerCancel.CancelAsync();
+            return false;
+
+        }
+    }
+
+    #region Abstract/Virtual
+
+    /// <summary>
+    /// Override to handle internal packages. This is awaited in the obtain thread.
+    /// </summary>
+    protected abstract Task OnReceivedInternalPackage(Package package);
+    /// <summary>
+    /// Override to handle data packages. This is called in the obtain thread.
+    /// </summary>
+    protected abstract void OnReceivedDataPackage(Package package);
+
+    /// <summary>
+    /// Override to handle errors. Return true if base should resume obtaining/dispatching threads; otherwise false.
+    /// </summary>
+    protected abstract Task<bool> OnError(Errors error);
+
+    /// <summary>
+    /// Starts the obtain and dispatch threads.
+    /// </summary>
+    public virtual void Start() {
+
+        StartObtain();
+        StartDispatch();
+
+    }
+
+    /// <summary>
+    /// Stops the obtain and dispatch threads and awaits their completion.
+    /// </summary>
+    public virtual async Task StopAsync(bool awaitTasks = true) {
+
+        //stop threads concurrently
+        Task stopObtainTask = StopObtainAsync();
+        Task stopDipatchTask = StopDispatchAsync();
+
+        if (awaitTasks)
+            await Task.WhenAll(stopObtainTask, stopDipatchTask);
+
+    }
+
+    /// <summary>
+    /// Forcefully close this instance. Also closes the underlying stream.
+    /// </summary>
+    public virtual void Close() {
+
+        ObtainHandlerCancel?.Cancel();
+        ObtainHandlerPause?.Dispose();
+        ObtainHandlerSync?.ActualDispose();
+
+        DispatchHandlerCancel?.Cancel();
+        DispatchHandlerPause?.Dispose();
+        DispatchHandlerSync?.ActualDispose();
+        QueueOut?.Clear();
+
+        Stream?.Close();
+
+    }
+
+    #endregion
+
+    #region ObtainHandler
+    private async Task ObtainHandler() {
+
+        ObtainHandlerCancel = new();
+        ObtainHandlerPause = new(true);
+        ObtainHandlerSync = new();
+
+        while (!ObtainHandlerCancel.IsCancellationRequested) {
+
+            try {
+                ObtainHandlerPause.Wait(ObtainHandlerCancel.Token);
+            } catch (OperationCanceledException) {
+                return;
+            }
+
+            //Note: There is a possible edge case where PauseReceive() is called between the pause check and entering the sync.
+            //In this state, this thread is not paused and also not in the sync so PauseReceive() enters the sync and assumes that this thread has paused.
+            //To avoid this, don't await the sync (which would mean awaiting PauseReceive() and receiving in this thread), but try to enter ONCE.
+            //If PauseReceive() is in the sync, this line returns false, and the pause state is rechecked. PauseReceive() can then continue normally.
+            if (!ObtainHandlerSync.Wait(0))
+                continue;
+            using (ObtainHandlerSync) {
+
+                Package incoming;
+                try {
+                    incoming = await ObtainPackageAsync(ObtainHandlerCancel.Token);
+                } catch (OperationCanceledException) {
+
+                    break;
+
+                } catch (InvalidOperationException) {
+
+                    await Error(Errors.CannotRead, false);
+                    continue;
+
+                } catch (TcpMsUnexpectedPackageException) {
+
+                    await Error(Errors.ErrorPackage, false);
+                    continue;
+
+                } catch (TcpMsTimeoutException) {
+
+                    await Error(Errors.ErrorPackage, false);
+                    continue;
+
+                }
+
+                if (incoming.IsInternalPackage)
+                    await OnReceivedInternalPackage(incoming);
+                else
+                    OnReceivedDataPackage(incoming);
+
+            }
+
+        }
+
+        ObtainHandlerCancel.Dispose();
+        ObtainHandlerPause.Dispose();
+        ObtainHandlerSync.ActualDispose();
+
+    }
+
+    /// <summary>
+    /// Starts the receiving thread and receiving packages.
+    /// </summary>
+    public void StartObtain() => ObtainHandlerTask = Task.Run(ObtainHandler);
+
+    /// <summary>
+    /// Wait for the current package to finish sending and pause the receiving thread.
+    /// </summary>
+    public async Task PauseObtainAsync() {
+
+        //tell the receiving thread to pause
+        ObtainHandlerPause.Reset();
+
+        //wait for the thread to finish sending the package. Also see the note in ObtainHandler().
+        await ObtainHandlerSync.WaitAsync();
+        ObtainHandlerSync.Release();
+
+    }
+
+    public void ResumeObtain() => ObtainHandlerPause.Set();
+
+    /// <summary>
+    /// Stops all receiving threads and awaits them.
+    /// </summary>
+    /// <returns>A task that finishes when all threads have finished.</returns>
+    public async Task StopObtainAsync() {
+
+        //cancel the receive handler
+        await ObtainHandlerCancel.CancelAsync();
+
+        //wait for the receive handler to finish, then wait for the queues to clear
+        await ObtainHandlerTask;
+
+    }
+
+    private async Task FlushObtainAsync() {
+        try {
+            byte[] buffer = new byte[16];
+            while (await Stream.ReadAsync(buffer.AsMemory()) > 0);
+        } finally { }
+    }
+    #endregion
+
+    #region DispatchHandler
+
+    private async Task DispatchHandler() {
+
+        QueueOut = new();
+        DispatchHandlerCancel = new();
+        DispatchHandlerPause = new(true);
+        DispatchHandlerSync = new();
+
+        while (!DispatchHandlerCancel.IsCancellationRequested) {
+
+            try {
+                DispatchHandlerPause.Wait(DispatchHandlerCancel.Token);
+            } catch (OperationCanceledException) {
+                return;
+            }
+
+            //same edge case as described in ObtainHandler()
+            if (!DispatchHandlerSync.Wait(0))
+                continue;
+            using (DispatchHandlerSync) {
+
+                if (QueueOut.TryDequeue(out Package outgoing)) {
+
+                    try {
+
+                        await DispatchPackageAsync(outgoing);
+
+                    } catch (InvalidOperationException) {
+
+                        await Error(Errors.CannotWrite, true);
+                        continue;
+
+                    }
+                }
+
+            }
+
+        }
+
+        //QueueOut.Clear(); we do not want to clear the queue, since we might want to manually handle it
+        DispatchHandlerCancel.Dispose();
+        DispatchHandlerPause.Dispose();
+        DispatchHandlerSync.ActualDispose();
+
+    }
+
+    /// <summary>
+    /// Puts a package in the dispatching queue.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException"/>
+    public void Send(Package package) {
+        QueueOut.Enqueue(package);
+    }
+
+    /// <summary>
+    /// Starts dispatching packages in the queue.
+    /// </summary>
+    public void StartDispatch() {
+
+        DispatchHandlerTask = Task.Run(DispatchHandler);
+
+    }
+
+    /// <summary>
+    /// Waits for the package to finish dispatching and pauses the dispatching thread.
+    /// </summary>
+    public async Task PauseDispatchAsync() {
+
+        DispatchHandlerPause.Reset();
+
+        await DispatchHandlerSync.WaitAsync();
+        DispatchHandlerSync.Release();
+    }
+
+    /// <summary>
+    /// Resumes the dispatching thread.
+    /// </summary>
+    public void ResumeDispatch() {
+        DispatchHandlerPause.Set();
+    }
+
+    /// <summary>
+    /// Stops the dispatching thread and awaits it.
+    /// </summary>
+    /// <returns>A task that finishes when all remaining packages were sent.</returns>
+    public async Task StopDispatchAsync() {
+
+        await DispatchHandlerCancel.CancelAsync();
+        await DispatchHandlerTask;
+
+    }
+
+    /// <summary>
+    /// Stops the dispatching thread and manually dispatches all remaining packages.
+    /// </summary>
+    /// <remarks>If the stream is closed at any point, the queue is cleared and the task finishes.</remarks>
+    /// <returns>A task that finishes when the dispatching thread has stopped and all remaining packages were dispatched.</returns>
+    public async Task StopAndDispatchRest() {
+
+        await StopDispatchAsync();
+
+        while (!QueueOut.IsEmpty) {
+
+            if (QueueOut.TryDequeue(out Package outgoing)) {
+
+                try {
+
+                    await DispatchPackageAsync(outgoing);
+
+                } catch (InvalidOperationException) {
+
+                    QueueOut.Clear();
+                    return;
+
+                }
+            }
+
+        }
+
+    }
+
+    #endregion
+
+    #region InternalHandler
+
+    private async Task InternalHandler() {
+
+    }
+
+    #endregion
+
+    #region Dispatch/Obtain
+    /// <summary>
+    /// Dispatches a package.
+    /// </summary>
+    /// <returns>A task that finishes when the package was dispatched.</returns>
+    /// <exception cref="InvalidOperationException"/>
+    public async Task DispatchPackageAsync(Package package) {
+
+        try {
+            await Stream.WriteAsync(package.GetBytes());
+        } catch {
+            throw new InvalidOperationException();
+        }
+
+    }
+
+    /// <summary>Obtains any package.</summary>
+    /// <exception cref="InvalidOperationException">Could not read bytes.</exception>
+    /// <exception cref="OperationCanceledException">The first byte timed out.</exception>
+    /// <exception cref="TcpMsTimeoutException">A byte after the first one timed out.</exception>
+    /// <exception cref="TcpMsErrorPackageException">Received an error package.</exception>
+   public async Task<Package> ObtainPackageAsync(CancellationToken cancellationToken = default) {
+
+
+        try {
+
+            byte[] packageTypeBuffer = new byte[1];
+            try {
+                await Stream.ReadAsync(packageTypeBuffer, cancellationToken == default ? TimeoutToken : cancellationToken);
+            } catch (OperationCanceledException) {
+                throw;
+            }
+            Package.PackageTypes packageType = (Package.PackageTypes)packageTypeBuffer[0];
+
+            TcpMsErrorPackageException.ThrowIfError(packageType);
+
+            byte[] dataTypeBuffer = new byte[1];
+            await Stream.ReadAsync(dataTypeBuffer, TimeoutToken); //don't let cancellationToken interrupt after the first byte
+            Package.DataTypes dataType = (Package.DataTypes)dataTypeBuffer[0];
+
+            byte[] dataLengthBuffer = new byte[4];
+            await Stream.ReadAsync(dataLengthBuffer, TimeoutToken);
+            int dataLength = BinaryPrimitives.ReadInt32BigEndian(dataLengthBuffer);
+
+            byte[] dataBuffer;
+            if (dataLength > 0) {
+                dataBuffer = new byte[dataLength];
+                await Stream.ReadAsync(dataBuffer, TimeoutToken);
+            } else {
+                dataBuffer = null;
+            }
+
+            return new(packageType, dataType, dataBuffer, false);
+
+        } catch (OperationCanceledException) {
+            throw new TcpMsTimeoutException();
+        } catch {
+            throw new InvalidOperationException("Could not read from stream.");
+        }
+    }
+
+    /// <exception cref="InvalidOperationException">Could not read bytes.</exception>
+    /// <exception cref="TcpMsTimeoutException">A byte timed out.</exception>
+    /// <exception cref="TcpMsErrorPackageException">Received an error package.</exception>
+    /// <exception cref="TcpMsUnexpectedPackageException">Received an unexpected package.</exception>
+    public async Task<Package> ObtainExpectedPackageAsync(Package.PackageTypes expectedType, CancellationToken cancellationToken = default) {
+
+
+        try {
+
+            byte[] packageTypeBuffer = new byte[1];
+            try {
+                await Stream.ReadAsync(packageTypeBuffer, cancellationToken == default ? TimeoutToken : cancellationToken);
+            } catch (OperationCanceledException) {
+                throw new TcpMsTimeoutException();
+            }
+            Package.PackageTypes packageType = (Package.PackageTypes)packageTypeBuffer[0];
+
+            TcpMsErrorPackageException.ThrowIfError(packageType);
+            TcpMsUnexpectedPackageException.ThrowIfUnexpected(expectedType, packageType);
+
+            byte[] dataTypeBuffer = new byte[1];
+            await Stream.ReadAsync(dataTypeBuffer, TimeoutToken);
+            Package.DataTypes dataType = (Package.DataTypes)dataTypeBuffer[0];
+
+            byte[] dataLengthBuffer = new byte[4];
+            await Stream.ReadAsync(dataLengthBuffer, TimeoutToken);
+            int dataLength = BinaryPrimitives.ReadInt32BigEndian(dataLengthBuffer);
+
+            byte[] dataBuffer;
+            if (dataLength > 0) {
+                dataBuffer = new byte[dataLength];
+                await Stream.ReadAsync(dataBuffer, TimeoutToken);
+            } else {
+                dataBuffer = null;
+            }
+
+            return new(packageType, dataType, dataBuffer, false);
+
+        } catch (OperationCanceledException) {
+
+            throw new TcpMsTimeoutException();
+
+        } catch {
+            throw new InvalidOperationException("Could not read from stream.");
+        }
+    }
+
+    #endregion
+
+}
+
 
 /// <summary>
-/// Thrown when a TcpMs instance breaks protocol.
+/// Thrown when a TcpMs instance receives an unexpected package.
 /// </summary>
 [Serializable]
-public class TcpMsProtocolException(string message) : Exception(message) {
-    [DoesNotReturn]
-    internal static void ThrowUnexpectedPackage(Package.PackageTypes expectedPackage, Package.PackageTypes receivedPackage) => throw new TcpMsProtocolException($"Received package of type {receivedPackage}, but expected {expectedPackage}");
+internal class TcpMsUnexpectedPackageException(Package.PackageTypes expectedPackage, Package.PackageTypes receivedPackage) : Exception($"Received package of type {receivedPackage}, but expected {expectedPackage}") {
+
+    /// <summary>
+    /// Throws an exception if <paramref name="expected"/> != None and <paramref name="expected"/> != <paramref name="received"/>
+    /// </summary>
+    public static void ThrowIfUnexpected(Package.PackageTypes expected, Package.PackageTypes received) {
+
+        if (expected != Package.PackageTypes.None && received != expected)
+            throw new TcpMsUnexpectedPackageException(expected, received);
+
+    }
+
 }
+
+/// <summary>
+/// Thrown when a TcpMs instance receives an error package.
+/// </summary>
+[Serializable]
+internal class TcpMsErrorPackageException() : Exception("Received an error package.") {
+    /// <summary>
+    /// Throws an excpetion if <paramref name="packageType"/> is <see cref="Package.PackageTypes.Error"/>.
+    /// </summary>
+    [DoesNotReturn]
+    public static void ThrowIfError(Package.PackageTypes packageType) {
+        if (packageType == Package.PackageTypes.Error)
+            throw new TcpMsErrorPackageException();
+    }
+}
+
+/// <summary>
+/// Thrown when a TcpMs instance timed out while obtaining a package.
+/// </summary>
+[Serializable]
+internal class TcpMsTimeoutException() : Exception("Timed out waiting for package.") { }
