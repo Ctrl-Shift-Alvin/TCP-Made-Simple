@@ -1,9 +1,7 @@
 ﻿using System;
-using System.Buffers.Binary;
-using System.Diagnostics;
 using System.Linq;
-using System.Linq.Expressions;
 using System.Net.Sockets;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -58,19 +56,31 @@ partial class TcpMsClient {
                     TcpMsClientInstance.HandleDisconnect();
                 }
                 break;
-                case Package.PackageTypes.Settings: {
 
-                }
-                break;
                 case Package.PackageTypes.Test: {
 
+                    await PauseAllAsync();
+
+                    var validationResult = await Manual_ValidateConnection();
+                    if (validationResult != OperationResult.Succeeded) {
+
+                        _ = OnError(validationResult == OperationResult.Disconnected ? Errors.Disconnected : Errors.UnexpectedPackage);
+
+                    }
+
+                    ResumeAll();
+
                 }
                 break;
+
                 case Package.PackageTypes.Ping: {
-
+                    await PauseDispatchAsync();
+                    await DispatchPackageAsync(new Package(Package.PackageTypes.Pong));
+                    ResumeDispatch();
                 }
                 break;
 
+                
 
             }
 
@@ -81,104 +91,98 @@ partial class TcpMsClient {
             byte[] data = package.Data;
             TcpMsClientInstance.DecryptIfNeccessary(ref data);
 
-            object value;
-
             switch (package.DataType) {
 
-                case Package.DataTypes.Bool: {
-
-                    value = BitConverter.ToBoolean(data);
-
-                }
-                break;
 
                 case Package.DataTypes.Byte: {
 
-                    value = data[0];
-
-                }
-                break;
-
-                case Package.DataTypes.Short: {
-
-                    value = BinaryPrimitives.ReadInt16BigEndian(data);
-
-                }
-                break;
-
-                case Package.DataTypes.Int: {
-
-                    value = BinaryPrimitives.ReadInt32BigEndian(data);
-
-                }
-                break;
-
-                case Package.DataTypes.Long: {
-
-                    value = BinaryPrimitives.ReadInt64BigEndian(data);
+                    TcpMsClientInstance.OnBlobReceived(data);
 
                 }
                 break;
 
                 case Package.DataTypes.String: {
 
-                    value = Encoding.Unicode.GetString(data);
+                    TcpMsClientInstance.OnStringReceived(Encoding.Unicode.GetString(data));
 
                 }
                 break;
 
                 case Package.DataTypes.Blob: {
 
-                    TcpMsClientInstance.OnDataReceived(data, Package.DataTypes.Blob);
+                    TcpMsClientInstance.OnBlobReceived(data);
 
                 }
                 return;
 
                 default: {
-                    value = null;
+                    _ = OnError(Errors.UnexpectedPackage);
                 }
-                break;
+                return;
+
             }
 
-            TcpMsClientInstance.OnDataReceived(value, package.DataType);
         }
 
-        protected override async Task<bool> OnError(Errors error) {
+        protected override async Task OnError(Errors error) {
 
             switch (error) {
 
                 case Errors.ReadTimeout: {
 
+                    await PauseAllAsync();
+                    if (await Manual_HandlePanic() == OperationResult.Succeeded) {
+                        ResumeAll();
+                    } else {
+                        TcpMsClientInstance.HandleDisconnect();
+                    }
+
                 }
-                break;
+                return;
 
                 case Errors.CannotWrite: {
 
+                    TcpMsClientInstance.HandleDisconnect();
+
                 }
-                return false;
+                return;
 
                 case Errors.CannotRead: {
 
+                    TcpMsClientInstance.HandleDisconnect();
+
                 }
-                return false;
+                return;
 
                 case Errors.ErrorPackage: {
 
+                    await PauseAllAsync();
+                    if (await Manual_HandlePanic() == OperationResult.Succeeded) {
+                        ResumeAll();
+                    } else {
+                        TcpMsClientInstance.HandleDisconnect();
+                    }
+
+
                 }
-                break;
+                return;
 
                 case Errors.UnexpectedPackage: {
 
+                    await PauseAllAsync();
+                    if (await Manual_HandlePanic() == OperationResult.Succeeded) {
+                        ResumeAll();
+                    } else {
+                        TcpMsClientInstance.HandleDisconnect();
+                    }
+
                 }
-                break;
+                return;
 
             }
 
-        }
+            TcpMsClientInstance.HandleDisconnect();
 
-        public override async Task StopAsync(bool awaitTasks = true) {
-            TcpClientInstance.Close();
-            await base.StopAsync(awaitTasks);
         }
         #endregion
 
@@ -188,10 +192,18 @@ partial class TcpMsClient {
         /// <returns><see langword="true"/> if the authentication was successful; otherwise <see langword="false"/>.</returns>
         public async Task<bool> Manual_Authenticate() {
 
-            if (Settings.Password.IsEmpty)
-                return false;
+            
 
             try {
+
+                Package infoPackage = await ObtainExpectedPackageAsync(Package.PackageTypes.Auth_Info);
+                if (infoPackage.Data[0] == byte.MaxValue) {
+                    Settings.EncryptionEnabled = true;
+                    return true;
+                }
+
+                if (Settings.Password.IsEmpty)
+                    return false;
 
                 AesEncryption encryptionIn;
                 Package saltIn = await ObtainExpectedPackageAsync(Package.PackageTypes.Auth_Salt);
@@ -252,16 +264,10 @@ partial class TcpMsClient {
 
             try {
 
-                RSAEncryption rsa = new();
-
-                //send public key that the server uses to encrypt encryption data
-                byte[] rsaPublicKey = rsa.Key.ExportPublicKey();
-                await DispatchPackageAsync(new Package(Package.PackageTypes.EncrRSAPublicKey, Package.DataTypes.Blob, rsaPublicKey, false));
-
                 Package iv = await ObtainExpectedPackageAsync(Package.PackageTypes.EncrIV);
                 Package salt = await ObtainExpectedPackageAsync(Package.PackageTypes.EncrSalt);
 
-                TcpMsClientInstance.Encryption = new(Settings.Password, rsa.DecryptBytes(salt.Data), rsa.DecryptBytes(iv.Data));
+                TcpMsClientInstance.Encryption = new(Settings.Password, salt.Data, iv.Data);
 
                 return OperationResult.Succeeded;
 
@@ -316,7 +322,10 @@ partial class TcpMsClient {
                     await DispatchPackageAsync(new Package(Package.PackageTypes.Test, Package.DataTypes.Blob, data, false));
 
                     //read result
-                    packageBuffer = await ObtainExpectedPackageAsync(Package.PackageTypes.TestTrySuccess);
+                    packageBuffer = await ObtainExpectedPackageAsync([Package.PackageTypes.TestTrySuccess, Package.PackageTypes.TestTryFailure]);
+
+                    if (packageBuffer.PackageType == Package.PackageTypes.TestTryFailure)
+                        return OperationResult.Failed;
 
                 } 
 
@@ -344,32 +353,46 @@ partial class TcpMsClient {
 
         public async Task<OperationResult> Manual_HandlePanic() {
 
-            try {
+            //receive settings
+            if (!await Manual_JoinClient()) {
 
-                Send(new Package(Package.PackageTypes.Panic));
+                await Manual_DispatchDisconnect();
+                return OperationResult.Disconnected;
 
-                //receive settings
-                Package settingsPackage = await Client.ReceivePackageAsync(Package.PackageTypes.Settings, cancellationToken: TimeoutToken); //if max panics is reached, error package is sent, so this throws an exception
-                Settings.Update(settingsPackage.Data);
-
-                await Manual_Authenticate();
-                await ReceiveEncryption();
-
-
-
-                if (!await ValidateConnection())
-
-                    OnPanic();
-
-            } catch {
-                HandleDisconnect();
             }
+
+            return OperationResult.Succeeded;
         }
+
+        public async Task<bool> Manual_JoinClient() {
+
+            if (await Manual_Authenticate() == false)
+                return false;
+
+            if (Settings.EncryptionEnabled) {
+
+                if (await Manual_ReceiveEncryption() != OperationResult.Succeeded)
+                    return false;
+
+                if (await Manual_ValidateConnection() != OperationResult.Succeeded)
+                    return false;
+
+            }
+            return true;
+
+        }
+
 
         public async Task Manual_DispatchError() {
             try {
                 await DispatchPackageAsync(Package.Error);
             } catch (InvalidOperationException) { }
+        }
+
+        public async Task Manual_DispatchDisconnect() {
+            try {
+                await DispatchPackageAsync(new Package(Package.PackageTypes.DisconnectRequest));
+            } finally { }
         }
 
         #endregion
@@ -379,7 +402,8 @@ partial class TcpMsClient {
 
     #region Handlers
     /// <summary>Closes a connected client and calls <c>OnDisconnect</c></summary>
-    private void HandleDisconnect() {
+    private async void HandleDisconnect() {
+        await ClientInstance.StopAllAsync();
         Close();
         OnDisconnect();
     }
@@ -393,7 +417,6 @@ partial class TcpMsClient {
         if (Settings.EncryptionEnabled)
             buffer = Encryption.EncryptBytes(buffer);
     }
-
 
     private void DecryptIfNeccessary(ref byte[] buffer) {
         if (Settings.EncryptionEnabled)

@@ -5,10 +5,9 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Buffers.Binary;
 using System.Collections.Concurrent;
-using AlvinSoft.Cryptography;
 using System.Security.Cryptography;
+using AlvinSoft.Cryptography;
 
 namespace AlvinSoft.TcpMs;
 
@@ -52,18 +51,8 @@ partial class TcpMsServer {
         #endregion
 
         #region Ping
-        private bool pingStatus;
-        private readonly object pingSync = new();
-        internal bool PongStatus {
-            get {
-                lock (pingSync)
-                    return pingStatus;
-            }
-            set {
-                lock (pingSync)
-                    pingStatus = value;
-            }
-        }
+        private volatile bool pingStatus;
+        internal bool PongStatus { get => pingStatus; set => pingStatus = value; }
 
         internal CancellationTokenSource PingCancel;
         internal void StartPing() {
@@ -110,42 +99,18 @@ partial class TcpMsServer {
             byte[] data = package.Data;
             ServerInstance.DecryptIfNecessary(ref data);
 
+            if (data == null || data.Length == 0)
+                return;
+
             switch (package.DataType) {
 
-                case Package.DataTypes.Bool: {
-
-                    bool value = BitConverter.ToBoolean(data);
-                    ServerInstance.OnDataReceived(ID, value, Package.DataTypes.Bool);
-                }
-                break;
 
                 case Package.DataTypes.Byte: {
 
-                    ServerInstance.OnDataReceived(ID, data[0], Package.DataTypes.Byte);
+                    if (data.Length > 1)
+                        goto default;
 
-                }
-                break;
-
-                case Package.DataTypes.Short: {
-
-                    short value = BinaryPrimitives.ReadInt16BigEndian(data);
-                    ServerInstance.OnDataReceived(ID, value, Package.DataTypes.Short);
-
-                }
-                break;
-
-                case Package.DataTypes.Int: {
-
-                    int value = BinaryPrimitives.ReadInt32BigEndian(data);
-                    ServerInstance.OnDataReceived(ID, value, Package.DataTypes.Int);
-
-                }
-                break;
-
-                case Package.DataTypes.Long: {
-
-                    long value = BinaryPrimitives.ReadInt64BigEndian(data);
-                    ServerInstance.OnDataReceived(ID, value, Package.DataTypes.Long);
+                    ServerInstance.OnBlobReceived(ID, data);
 
                 }
                 break;
@@ -153,19 +118,25 @@ partial class TcpMsServer {
                 case Package.DataTypes.String: {
 
                     string value = Encoding.Unicode.GetString(data);
-                    ServerInstance.OnDataReceived(ID, value, Package.DataTypes.String);
+                    ServerInstance.OnStringReceived(ID, value);
 
                 }
                 break;
 
                 case Package.DataTypes.Blob: {
 
-                    ServerInstance.OnDataReceived(ID, data, Package.DataTypes.Blob);
+                    ServerInstance.OnBlobReceived(ID, data);
 
                 }
                 break;
 
+                default: {
+                    _ = OnError(Errors.UnexpectedPackage);
+                }
+                break;
+
             }
+
         }
 
         protected override async Task OnReceivedInternalPackage(Package package) {
@@ -178,21 +149,21 @@ partial class TcpMsServer {
 
                     case OperationResult.Disconnected: {
 
-                        await OnError(Errors.Disconnected);
+                        _ = OnError(Errors.Disconnected);
 
                     }
                     break;
 
                     case OperationResult.Failed: {
 
-                        await OnError(Errors.IncorrectPackage);
+                        _ = OnError(Errors.IncorrectPackage);
 
                     }
                     break;
 
                     case OperationResult.Error: {
 
-                        await OnError(Errors.ErrorPackage);
+                        _ = OnError(Errors.ErrorPackage);
 
                     }
                     break;
@@ -210,8 +181,8 @@ partial class TcpMsServer {
 
                 case Package.PackageTypes.DisconnectRequest: {
 
+                    //This task is running in the obtain handler, so do not await StopObtain here, which "await StopAll()" would do.
                     await StopDispatchAsync();
-                    //This task is running in the obtain handler, so do not await StopObtain here.
                     _ = StopObtainAsync();
 
                     await Manual_DispatchDisconnect();
@@ -236,7 +207,7 @@ partial class TcpMsServer {
                 break;
 
                 default: {
-                    await OnError(Errors.UnexpectedPackage);
+                    _ = OnError(Errors.UnexpectedPackage);
                 }
                 break;
 
@@ -246,50 +217,19 @@ partial class TcpMsServer {
 
         protected override async Task OnError(Errors error) {
 
-            async Task HandleOperation(Task<OperationResult> task) {
+            async Task HandlePanic() {
 
                 await PauseAllAsync();
 
-                switch (await task) {
+                var result = await Manual_HandlePanic();
 
-                    case OperationResult.Disconnected: {
-                        await StopAll();
-                        ServerInstance.RemoveClient(this);
-                    }
-                    return;
-
-                    case OperationResult.Error: {
-                        
-                        var result = await Manual_HandlePanic();
-
-                        if (result != OperationResult.Succeeded) {
-                            await StopAll();
-                            ServerInstance.RemoveClient(this);
-                            return;
-                        }
-                        
-                    }
-                    break;
-
-                    case OperationResult.Failed: {
-
-                        var result = await Manual_HandlePanic();
-
-                        if (result != OperationResult.Succeeded) {
-                            await StopAll();
-                            ServerInstance.RemoveClient(this);
-                            return;
-                        }
-
-                    }
-                    break;
-
-                    case OperationResult.Succeeded:
-                        break;
-
+                if (result == true) {
+                    ResumeAll();
+                } else {
+                    await StopAllAsync();
+                    ServerInstance.RemoveClient(this);
                 }
 
-                ResumeAll();
 
             }
 
@@ -297,7 +237,7 @@ partial class TcpMsServer {
 
                 case Errors.ReadTimeout: {
 
-                    await HandleOperation(Manual_HandlePanic());
+                    await HandlePanic();
 
                 }
                 return;
@@ -318,7 +258,7 @@ partial class TcpMsServer {
 
                 case Errors.ErrorPackage: {
 
-                    await HandleOperation(Manual_HandlePanic());
+                    await HandlePanic();
 
                 }
                 return;
@@ -326,14 +266,14 @@ partial class TcpMsServer {
 
                 case Errors.PingTimeout: {
 
-                    await HandleOperation(Manual_HandlePanic());
+                    await HandlePanic();
 
                 }
                 return;
 
                 case Errors.IncorrectPackage: {
 
-                    await HandleOperation(Manual_HandlePanic());
+                    await HandlePanic();
 
                 }
                 return;
@@ -342,14 +282,14 @@ partial class TcpMsServer {
 
         }
 
-        public override void Start() {
-            base.Start();
+        public override void StartAll() {
+            base.StartAll();
             StartPing();
         }
 
-        public override Task StopAsync(bool awaitTasks = true) {
+        public override Task StopAllAsync() {
             StopPing();
-            return base.StopAsync(awaitTasks);
+            return base.StopAllAsync();
         }
 
         public override void Close() {
@@ -362,9 +302,17 @@ partial class TcpMsServer {
         #region Manual_Handlers
 
         /// <summary>Tries to authenticate the client.</summary>
-        internal async Task<OperationResult> Manual_AuthenticateClient() {
+        internal async Task<bool> Manual_AuthenticateClient() {
 
             try {
+                    
+                //tell the client if encryption is being used
+                if (Settings.EncryptionEnabled) {
+                    await DispatchPackageAsync(new Package(Package.PackageTypes.Auth_Info, Package.DataTypes.Blob, [byte.MaxValue]));
+                } else {
+                    await DispatchPackageAsync(new Package(Package.PackageTypes.Auth_Info, Package.DataTypes.Blob, [0]));
+                    return false;
+                }
 
                 AesEncryption encryptionOut = new() {
                     Password = Settings.Password
@@ -394,25 +342,27 @@ partial class TcpMsServer {
 
                 await DispatchPackageAsync(new Package(Package.PackageTypes.Auth_Response, Package.DataTypes.Blob, challengeInHash));
 
-                response = await ObtainPackageAsync();
-                return response.PackageType == Package.PackageTypes.Auth_Success ? OperationResult.Succeeded : OperationResult.Failed;
+                response = await ObtainExpectedPackageAsync([Package.PackageTypes.Auth_Success, Package.PackageTypes.Auth_Failure]);
+                return response.PackageType == Package.PackageTypes.Auth_Success;
 
 
             } catch (TcpMsErrorPackageException) {
 
-                return OperationResult.Error;
+                return false;
 
             } catch (TcpMsUnexpectedPackageException) {
 
-                return OperationResult.Failed;
+                await Manual_DispatchErrorAsync();
+                return false;
 
             } catch (TcpMsTimeoutException) {
 
-                return OperationResult.Disconnected;
+                return false;
 
             } catch (InvalidOperationException) {
 
-                return OperationResult.Disconnected;
+                return false;
+
             }
 
         }
@@ -422,23 +372,17 @@ partial class TcpMsServer {
 
             try {
 
-                //read rsa key, so the iv and salt can be encrypted
-                var clientRsaPubKeyPackage = await ObtainExpectedPackageAsync(Package.PackageTypes.EncrRSAPublicKey);
+                //send iv
+                await DispatchPackageAsync(new Package(Package.PackageTypes.EncrIV, Package.DataTypes.Blob, ServerInstance.Encryption.IV, true));
 
-                RSAEncryption rsa = new(RSAKey.ImportPublicKey(clientRsaPubKeyPackage.Data));
-
-                //encrypt and send iv
-                byte[] encIv = rsa.EncryptBytes(ServerInstance.Encryption.IV);
-                await DispatchPackageAsync(new Package(Package.PackageTypes.EncrIV, Package.DataTypes.Blob, encIv, false));
-
-                //encrypt and send salt
-                byte[] encSalt = rsa.EncryptBytes(ServerInstance.Encryption.Salt);
-                await DispatchPackageAsync(new Package(Package.PackageTypes.EncrSalt, Package.DataTypes.Blob, encSalt, false));
+                //send salt
+                await DispatchPackageAsync(new Package(Package.PackageTypes.EncrSalt, Package.DataTypes.Blob, ServerInstance.Encryption.Salt, true));
 
                 return OperationResult.Succeeded;
 
             } catch (TcpMsUnexpectedPackageException) {
 
+                await Manual_DispatchErrorAsync();
                 return OperationResult.Error;
 
             } catch (TcpMsErrorPackageException) {
@@ -453,26 +397,6 @@ partial class TcpMsServer {
 
                 return OperationResult.Disconnected;
 
-            }
-
-        }
-
-        /// <summary>Tries to send server's settings to a client.</summary>
-        internal async Task<OperationResult> Manual_DispatchServerSettings(ServerSettings settings) {
-
-            byte[] settingsData = settings.GetBytes();
-            try {
-
-                await DispatchPackageAsync(new Package(Package.PackageTypes.Settings, Package.DataTypes.Blob, settingsData, false));
-
-                if (Settings.EncryptionEnabled && Settings.Password != settings.Password) {
-                    return await Manual_SendEncryption();
-                }
-
-                return OperationResult.Succeeded;
-
-            } catch (InvalidOperationException) {
-                return OperationResult.Disconnected;
             }
 
         }
@@ -519,27 +443,36 @@ partial class TcpMsServer {
                 }
 
             } catch (TcpMsErrorPackageException) {
+
                 return OperationResult.Error;
+
             } catch (TcpMsUnexpectedPackageException) {
+
+                await Manual_DispatchErrorAsync();
                 return OperationResult.Error;
+
             } catch (TcpMsTimeoutException) {
+
                 return OperationResult.Disconnected;
+
             } catch (InvalidOperationException) {
+
                 return OperationResult.Disconnected;
+
             }
 
             return OperationResult.Succeeded;
 
         }
 
-        /// <summary>Calls panic on the client and tries to rejoin the client.</summary>
-        internal async Task<OperationResult> Manual_HandlePanic() {
+        /// <summary>Checks max panic count, announces panic and tries to rejoin client. If anything fails, a disconnect is dispatched and returns <see langword="false"/>.</summary>
+        internal async Task<bool> Manual_HandlePanic() {
 
             try {
 
                 if (PanicCount >= Settings.MaxPanicsPerClient) {
                     await Manual_DispatchDisconnect();
-                    return OperationResult.Disconnected;
+                    return false;
                 }
 
                 IncrementPanic();
@@ -552,24 +485,25 @@ partial class TcpMsServer {
                 if (!await Manual_JoinClient()) {
 
                     await Manual_DispatchDisconnect();
-                    return OperationResult.Disconnected;
+                    return false;
 
                 }
 
 
             } catch (InvalidOperationException) {
 
-                return OperationResult.Disconnected;
+                await Manual_DispatchDisconnect();
+                return false;
 
             }
 
             ServerInstance.OnClientPanic(ID);
-            return OperationResult.Succeeded;
+            return true;
         }
 
         /// <summary>Sends an error package to the client.</summary>
         /// <returns>A task that returns true when the package was successfully sent; otherwise false.</returns>
-        internal async Task<bool> Manual_DispatchError() {
+        internal async Task<bool> Manual_DispatchErrorAsync() {
             try {
                 await DispatchPackageAsync(new Package(Package.PackageTypes.Error));
                 return true;
@@ -584,12 +518,9 @@ partial class TcpMsServer {
         /// <returns>true if everything succeeded; otherwise false.</returns>
         internal async Task<bool> Manual_JoinClient() {
 
-            if (await Manual_DispatchServerSettings(Settings) != OperationResult.Succeeded)
-                return false;
-
             if (Settings.EncryptionEnabled) {
 
-                if (await Manual_AuthenticateClient() != OperationResult.Succeeded)
+                if (await Manual_AuthenticateClient() == false)
                     return false;
 
                 if (await Manual_SendEncryption() != OperationResult.Succeeded)
@@ -615,15 +546,12 @@ partial class TcpMsServer {
 
     }
 
-
-    private Client GetClient(byte[] id) => Clients[id];
-
     private Client TryGetClient(byte[] id) {
 
         if (Clients.TryGetValue(id, out var client))
             return client;
         else
-            throw new ArgumentException("Client with this ID not found.", nameof(id));
+            throw new ArgumentException("Client with this ID was not found.", nameof(id));
     }
 
     /// <summary>true if the connected client count is less than <see cref="ServerSettings.MaxClients"/>; otherwise false</summary>
@@ -663,13 +591,8 @@ partial class TcpMsServer {
         Clients.TryAdd(client.ID, client);
         OnClientConnected(client.ID);
 
-        client.Start();
+        client.StartAll();
 
-    }
-
-    private void BroadcastPackage(Package package) {
-        foreach (Client client in Clients.Values)
-            client.Send(package);
     }
 
     /// <summary>Tries to remove <paramref name="client"/> from <see cref="Clients"/>. Calls <see cref="OnClientDisconnected(byte[])"/> if necessary.</summary>

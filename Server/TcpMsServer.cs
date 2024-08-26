@@ -26,10 +26,13 @@ public partial class TcpMsServer {
     private void OnClientDisconnected(byte[] clientId) => ClientDisconnected?.Invoke(clientId);
     private void OnClientPanic(byte[] clientId) => ClientPanic?.Invoke(clientId);
 
-    public delegate void DataEvent(byte[] clientId, object data, Package.DataTypes type);
-    public event DataEvent DataReceived;
+    public delegate void BlobReceived(byte[] clientId, byte[] data);
+    public event BlobReceived BlobReceivedEvent;
+    private void OnBlobReceived(byte[] clientId, byte[] data) => BlobReceivedEvent?.Invoke(clientId, data);
 
-    private void OnDataReceived(byte[] clientId, object data, Package.DataTypes type) => DataReceived?.Invoke(clientId, data, type);
+    public delegate void StringReceived(byte[] clientId, string data);
+    public event StringReceived StringReceivedEvent;
+    private void OnStringReceived(byte[] clientId, string data) => StringReceivedEvent?.Invoke(clientId, data);
 
 #pragma warning restore CS1591
     #endregion
@@ -83,7 +86,7 @@ public partial class TcpMsServer {
 
         if (Clients != null && !Clients.IsEmpty) {
             foreach (Client client in Clients.Values)
-                client.StopAsync();
+                client.Close();
         }
 
         Encryption?.Dispose();

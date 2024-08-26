@@ -8,6 +8,7 @@ using System.Net.Sockets;
 using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
 using AlvinSoft.Cryptography;
+using System.Text;
 
 namespace AlvinSoft.TcpMs;
 
@@ -133,24 +134,19 @@ public readonly struct Package {
     /// <summary>The type of data stored in <see cref="Data"/></summary>
     public enum DataTypes : byte {
         Empty,
-        Bool,
         String,
         Byte,
-        Short,
-        Int,
-        Long,
         Blob
     }
 
     public enum PackageTypes : byte {
         None,
         Error,
-        ProtocolError,
         DisconnectRequest,
         Disconnect,
-        Settings,
         Data,
 
+        Auth_Info,
         Auth_Request,
         Auth_Salt,
         Auth_IV,
@@ -160,7 +156,6 @@ public readonly struct Package {
         Auth_Failure,
 
         EncrRequest,
-        EncrRSAPublicKey,
         EncrIV,
         EncrSalt,
 
@@ -387,43 +382,11 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
     protected abstract Task OnError(Errors error);
 
     /// <summary>
-    /// Starts the obtain and dispatch threads.
-    /// </summary>
-    public virtual void Start() {
-
-        StartObtain();
-        StartDispatch();
-
-    }
-
-    /// <summary>
-    /// Stops the obtain and dispatch threads and awaits their completion.
-    /// </summary>
-    public virtual async Task StopAsync(bool awaitTasks = true) {
-
-        //stop threads concurrently
-        Task stopObtainTask = StopObtainAsync();
-        Task stopDipatchTask = StopDispatchAsync();
-
-        if (awaitTasks)
-            await Task.WhenAll(stopObtainTask, stopDipatchTask);
-
-    }
-
-    /// <summary>
-    /// Forcefully close this instance. Also closes the underlying stream.
+    /// Forcefully closes the underlying stream.
     /// </summary>
     public virtual void Close() {
 
-        ObtainHandlerCancel?.Cancel();
-        ObtainHandlerPause?.Dispose();
-        ObtainHandlerSync?.ActualDispose();
-
-        DispatchHandlerCancel?.Cancel();
-        DispatchHandlerPause?.Dispose();
-        DispatchHandlerSync?.ActualDispose();
-        QueueOut?.Clear();
-
+        _ = StopAllAsync();
         Stream?.Close();
 
     }
@@ -496,15 +459,26 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
 
     }
 
+    private bool IsObtainNull() => ObtainHandlerCancel == null || ObtainHandlerCancel.IsCancellationRequested;
+
     /// <summary>
     /// Starts the receiving thread and receiving packages.
     /// </summary>
-    public void StartObtain() => ObtainHandlerTask = Task.Run(ObtainHandler);
+    public void StartObtain() {
+
+        if (!IsDispatchNull())
+            return;
+
+        ObtainHandlerTask = Task.Run(ObtainHandler);
+    }
 
     /// <summary>
     /// Wait for the current package to finish sending and pause the receiving thread.
     /// </summary>
     public async Task PauseObtainAsync() {
+
+        if (IsObtainNull())
+            return;
 
         if (!ObtainHandlerPause.IsSet)
             return;
@@ -518,13 +492,22 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
 
     }
 
-    public void ResumeObtain() => ObtainHandlerPause.Set();
+    public void ResumeObtain() {
+
+        if (IsDispatchNull())
+            return;
+
+        ObtainHandlerPause.Set();
+    }
 
     /// <summary>
     /// Stops all receiving threads and awaits them.
     /// </summary>
     /// <returns>A task that finishes when all threads have finished.</returns>
     public async Task StopObtainAsync() {
+
+        if (IsObtainNull())
+            return;
 
         //cancel the receive handler
         await ObtainHandlerCancel.CancelAsync();
@@ -589,6 +572,8 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
 
     }
 
+    private bool IsDispatchNull() => DispatchHandlerCancel == null || DispatchHandlerCancel.IsCancellationRequested;
+
     /// <summary>
     /// Puts a package in the dispatching queue.
     /// </summary>
@@ -602,6 +587,9 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
     /// </summary>
     public void StartDispatch() {
 
+        if (!IsDispatchNull())
+            return;
+
         DispatchHandlerTask = Task.Run(DispatchHandler);
 
     }
@@ -610,6 +598,9 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
     /// Waits for the package to finish dispatching and pauses the dispatching thread.
     /// </summary>
     public async Task PauseDispatchAsync() {
+
+        if (IsDispatchNull())
+            return;
 
         if (!DispatchHandlerPause.IsSet)
             return;
@@ -624,6 +615,10 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
     /// Resumes the dispatching thread.
     /// </summary>
     public void ResumeDispatch() {
+
+        if (IsDispatchNull())
+            return;
+
         DispatchHandlerPause.Set();
     }
 
@@ -632,6 +627,9 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
     /// </summary>
     /// <returns>A task that finishes when all remaining packages were sent.</returns>
     public async Task StopDispatchAsync() {
+
+        if (IsDispatchNull())
+            return;
 
         await DispatchHandlerCancel.CancelAsync();
         await DispatchHandlerTask;
@@ -669,19 +667,31 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
 
     #endregion
 
-    public void StartAll() {
+    /// <summary>
+    /// Starts the obtain and dispatch threads.
+    /// </summary>
+    public virtual void StartAll() {
         StartDispatch();
         StartObtain();
     }
 
-    public async Task PauseAllAsync() => await Task.WhenAll(PauseDispatchAsync(), PauseObtainAsync());
+    /// <summary>
+    /// Pause the obtain and dispatch threads.
+    /// </summary>
+    public virtual async Task PauseAllAsync() => await Task.WhenAll(PauseDispatchAsync(), PauseObtainAsync());
 
-    public void ResumeAll() {
+    /// <summary>
+    /// Resume the obtain and dispatch threads.
+    /// </summary>
+    public virtual void ResumeAll() {
         ResumeDispatch();
         ResumeObtain();
     }
 
-    public async Task StopAll() {
+    /// <summary>
+    /// Stops the obtain and dispatch threads and awaits their completion.
+    /// </summary>
+    public virtual async Task StopAllAsync() {
         await Task.WhenAll(StopDispatchAsync(), StopObtainAsync());
     }
 
@@ -753,7 +763,6 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
     /// <exception cref="TcpMsUnexpectedPackageException">Received an unexpected package.</exception>
     public async Task<Package> ObtainExpectedPackageAsync(Package.PackageTypes expectedType, CancellationToken cancellationToken = default) {
 
-
         try {
 
             byte[] packageTypeBuffer = new byte[1];
@@ -794,6 +803,53 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
         }
     }
 
+    /// <exception cref="InvalidOperationException">Could not read bytes.</exception>
+    /// <exception cref="TcpMsTimeoutException">A byte timed out.</exception>
+    /// <exception cref="TcpMsErrorPackageException">Received an error package.</exception>
+    /// <exception cref="TcpMsUnexpectedPackageException">Received an unexpected package.</exception>
+    public async Task<Package> ObtainExpectedPackageAsync(Package.PackageTypes[] expectedTypes, CancellationToken cancellationToken = default) {
+
+        try {
+
+            byte[] packageTypeBuffer = new byte[1];
+            try {
+                await Stream.ReadAsync(packageTypeBuffer, cancellationToken == default ? TimeoutToken : cancellationToken);
+            } catch (OperationCanceledException) {
+                throw new TcpMsTimeoutException();
+            }
+            Package.PackageTypes packageType = (Package.PackageTypes)packageTypeBuffer[0];
+
+            TcpMsErrorPackageException.ThrowIfError(packageType);
+            TcpMsUnexpectedPackageException.ThrowIfUnexpected(expectedTypes, packageType);
+
+            byte[] dataTypeBuffer = new byte[1];
+            await Stream.ReadAsync(dataTypeBuffer, TimeoutToken);
+            Package.DataTypes dataType = (Package.DataTypes)dataTypeBuffer[0];
+
+            byte[] dataLengthBuffer = new byte[4];
+            await Stream.ReadAsync(dataLengthBuffer, TimeoutToken);
+            int dataLength = BinaryPrimitives.ReadInt32BigEndian(dataLengthBuffer);
+
+            byte[] dataBuffer;
+            if (dataLength > 0) {
+                dataBuffer = new byte[dataLength];
+                await Stream.ReadAsync(dataBuffer, TimeoutToken);
+            } else {
+                dataBuffer = null;
+            }
+
+            return new(packageType, dataType, dataBuffer, false);
+
+        } catch (OperationCanceledException) {
+
+            throw new TcpMsTimeoutException();
+
+        } catch {
+            throw new InvalidOperationException("Could not read from stream.");
+        }
+
+    }
+
     #endregion
 
 }
@@ -803,7 +859,7 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
 /// Thrown when a TcpMs instance receives an unexpected package.
 /// </summary>
 [Serializable]
-internal class TcpMsUnexpectedPackageException(Package.PackageTypes expectedPackage, Package.PackageTypes receivedPackage) : Exception($"Received package of type {receivedPackage}, but expected {expectedPackage}") {
+internal class TcpMsUnexpectedPackageException(string expected, string receivedPackage) : Exception($"Received package of type \"{receivedPackage}\", but expected \"{expected}\"") {
 
     /// <summary>
     /// Throws an exception if <paramref name="expected"/> != None and <paramref name="expected"/> != <paramref name="received"/>
@@ -811,7 +867,34 @@ internal class TcpMsUnexpectedPackageException(Package.PackageTypes expectedPack
     public static void ThrowIfUnexpected(Package.PackageTypes expected, Package.PackageTypes received) {
 
         if (expected != Package.PackageTypes.None && received != expected)
-            throw new TcpMsUnexpectedPackageException(expected, received);
+            throw new TcpMsUnexpectedPackageException(expected.ToString(), received.ToString());
+
+    }
+
+    public static void ThrowIfUnexpected(Package.PackageTypes[] expected, Package.PackageTypes received) {
+
+        if (expected == null || expected.Length == 0)
+            throw new ArgumentException("You need to expect at least one package type!");
+
+        if (!expected.Any(k => k == received)) {
+
+            StringBuilder expectedString = new();
+
+            if (expected.Length == 1) {
+                expectedString.Append(expected[0].ToString());
+            } else {
+
+                for (int i = 0; i < expected.Length - 1; i++) {
+                    expectedString.Append(expected[i].ToString());
+                    expectedString.Append(", ");
+                }
+                expectedString.Append("or");
+                expectedString.Append(expected[^1].ToString());
+
+            }
+            
+            throw new TcpMsUnexpectedPackageException(expectedString.ToString(), received.ToString());
+        }
 
     }
 

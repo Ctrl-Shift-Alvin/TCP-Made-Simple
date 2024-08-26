@@ -3,7 +3,6 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Threading;
 using System.Net.Sockets;
-using System.Buffers.Binary;
 using System.Runtime.Versioning;
 
 namespace AlvinSoft.TcpMs;
@@ -34,20 +33,24 @@ public partial class TcpMsClient(string hostname, ushort port) {
     private void OnPanic() => OnPanicEvent?.Invoke();
 
 
-    public delegate void DataReceived(object data, Package.DataTypes type);
-    public event DataReceived OnDataReceivedEvent;
+    public delegate void BlobReceived(byte[] data);
+    public event BlobReceived OnBlobReceivedEvent;
+    private void OnBlobReceived(byte[] data) => OnBlobReceivedEvent?.Invoke(data);
 
-    private void OnDataReceived(object data, Package.DataTypes type) => OnDataReceivedEvent?.Invoke(data, type);
+    public delegate void StringReceived(string data);
+    public event StringReceived OnStringReceivedEvent;
+    private void OnStringReceived(string data) => OnStringReceivedEvent?.Invoke(data);
 
-    #pragma warning restore CS1591
+#pragma warning restore CS1591
     #endregion
 
     /// <summary>Try to connect to the server and authenticate.</summary>
-    /// <returns>A task that returns true if the connection and authentication succeeded; otherwise false.</returns>
+    /// <returns>A task that returns true if the connection (and authentication) succeeded; otherwise false.</returns>
     public async Task<bool> TryConnectAsync(string password = null, CancellationToken cancellationToken = default) {
 
         Settings = ServerSettings.None;
-        Settings.Password = new(password);
+        if (password != null)
+            Settings.Password = new(password);
 
         try {
 
@@ -56,7 +59,14 @@ public partial class TcpMsClient(string hostname, ushort port) {
 
             ClientInstance = new(this, tcp);
 
-            return await ConnectionHandler();
+            if (await ClientInstance.Manual_JoinClient()) {
+
+                ClientInstance.StartAll();
+                return true;
+
+            } else {
+                return false;
+            }
 
         } catch {
             Close();
@@ -70,34 +80,17 @@ public partial class TcpMsClient(string hostname, ushort port) {
     /// <exception cref="ArgumentException"/>
     public async Task DisconnectAsync() {
 
-        EnsureIsConnected();
+        await ClientInstance.StopAllAsync();
+        await ClientInstance.Manual_DispatchDisconnect();
+        Close();
 
-        await Client.SendPackageAsync(new Package(Package.PackageTypes.Disconnect));
     }
 
-    /// <summary>Closes the server.</summary>
-    /// <remarks>Use <see cref="Disconnect"/> or <see cref="DisconnectAsync"/> to disconnect gracefully.</remarks>
-    public void Close() {
-        Client?.Close();
-    }
-
-    /// <summary>Test this connection until a test is successful, using test packages, and call panic for each failed test</summary>
-    /// <returns>A task that finishes when the client's connection was either verified or terminated</returns>
-    public async Task<bool> VerifyConnectionAsync() {
-        await Client.SendPackageAsync(new Package(Package.PackageTypes.Test));
-        return await ValidateConnection();
-    }
+    /// <summary>Closes the client.</summary>
+    /// <remarks>Use <see cref="DisconnectAsync"/> to disconnect gracefully.</remarks>
+    public void Close() => ClientInstance?.Close();
 
     #region Send_Methods
-    /// <summary>Send a bool package</summary>
-    /// <returns>A task that finishes when the data was sent</returns>
-    public void SendBool(bool data) {
-
-        byte[] bytes = BitConverter.GetBytes(data);
-        EncryptIfNeccessary(ref bytes);
-        Client.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.Bool, bytes, false));
-        
-    }
 
     /// <summary>Send a bool package</summary>
     /// <returns>A task that finishes when the data was sent</returns>
@@ -105,40 +98,7 @@ public partial class TcpMsClient(string hostname, ushort port) {
 
         byte[] bytes = [data];
         EncryptIfNeccessary(ref bytes);
-        Client.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.Byte, bytes, false));
-
-    }
-
-    /// <summary>Send a <see cref="short"/> package</summary>
-    /// <returns>A task that finishes when the data was sent</returns>
-    public void SendShort(short data) {
-
-        byte[] bytes = new byte[2];
-        BinaryPrimitives.WriteInt16BigEndian(bytes, data);
-        EncryptIfNeccessary(ref bytes);
-        Client.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.Short, bytes, false));
-
-    }
-
-    /// <summary>Send an int package</summary>
-    /// <returns>A task that finishes when the data was sent</returns>
-    public void SendInt(int data) {
-
-        byte[] bytes = new byte[4];
-        BinaryPrimitives.WriteInt32BigEndian(bytes, data);
-        EncryptIfNeccessary(ref bytes);
-        Client.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.Int, bytes, false));
-
-    }
-
-    /// <summary>Send a <see cref="long"/> package</summary>
-    /// <returns>A task that finishes when the data was sent</returns>
-    public void SendLong(long data) {
-
-        byte[] bytes = new byte[8];
-        BinaryPrimitives.WriteInt64BigEndian(bytes, data);
-        EncryptIfNeccessary(ref bytes);
-        Client.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.Long, bytes, false));
+        ClientInstance.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.Byte, bytes, false));
 
     }
 
@@ -149,7 +109,7 @@ public partial class TcpMsClient(string hostname, ushort port) {
 
         byte[] bytes = Encoding.Unicode.GetBytes(data);
         EncryptIfNeccessary(ref bytes);
-        Client.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.String, bytes, false));
+        ClientInstance.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.String, bytes, false));
     }
 
     /// <summary>Send a byte array package</summary>
@@ -158,7 +118,8 @@ public partial class TcpMsClient(string hostname, ushort port) {
 
         byte[] bytes = data;
         EncryptIfNeccessary(ref bytes);
-        Client.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.Blob, bytes));
+        ClientInstance.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.Blob, bytes, false));
+
     }
 
     #endregion
