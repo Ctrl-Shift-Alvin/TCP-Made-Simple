@@ -121,17 +121,6 @@ public partial class TcpMsServer {
             await ListenerLoopTask;
     }
 
-    /// <summary>Test all client's connections using test packages and call panic on the relevant client for each failed test</summary>
-    /// <returns>A task that finishes when all client's connections were either verified or terminated</returns>
-    public async Task VerifyAllConnectionsAsync() {
-
-        List<Task> tasks = [];
-        foreach (Client client in Clients.Values)
-            tasks.Add(VerifyConnectionAsync(client));
-
-        await Task.WhenAll(tasks);
-    }
-
     #region Client_Methods
 
     /// <summary>
@@ -149,20 +138,9 @@ public partial class TcpMsServer {
     #endregion
 
     #region Send_Methods
-    /// <summary>Sends a bool package to a client</summary>
-    public void SendBool(byte[] clientId, bool data) => SendBool(TryGetClient(clientId), data);
 
     /// <summary>Sends a byte package to a client</summary>
     public void SendByte(byte[] clientId, byte data) => SendByte(TryGetClient(clientId), data);
-
-    /// <summary>Sends a <see cref="short"/> package to a client</summary>
-    public void SendShort(byte[] clientId, short data) => SendShort(TryGetClient(clientId), data);
-
-    /// <summary>Sends an int package to a client</summary>
-    public void SendInt(byte[] clientId, int data) => SendInt(TryGetClient(clientId), data);
-
-    /// <summary>Sends a <see cref="long"/> package to a client</summary>
-    public void SendLong(byte[] clientId, long data) => SendLong(TryGetClient(clientId), data);
 
     /// <summary>Sends a string package to a client</summary>
     /// <remarks>The string is sent in UTF-16 format</remarks>
@@ -172,41 +150,12 @@ public partial class TcpMsServer {
     public void SendBlob(byte[] clientId, byte[] data) => SendBlob(TryGetClient(clientId), data);
 
 
-    private void SendBool(Client client, bool data) {
-        byte[] parsedData = BitConverter.GetBytes(data);
-        EncryptIfNecessary(ref parsedData);
-        client.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.Bool, parsedData));
-    }
 
     private void SendByte(Client client, byte data) {
 
         byte[] parsedData = [data];
         EncryptIfNecessary(ref parsedData);
         client.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.Byte, parsedData));
-    }
-
-    private void SendShort(Client client, short data) {
-
-        byte[] parsedData = new byte[2];
-        BinaryPrimitives.WriteInt16BigEndian(parsedData, data);
-        EncryptIfNecessary(ref parsedData);
-        client.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.Short, parsedData));
-    }
-
-    private void SendInt(Client client, int data) {
-
-        byte[] parsedData = new byte[4];
-        BinaryPrimitives.WriteInt32BigEndian(parsedData, data);
-        EncryptIfNecessary(ref parsedData);
-        client.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.Int, parsedData));
-    }
-
-    private void SendLong(Client client, long data) {
-
-        byte[] parsedData = new byte[8];
-        BinaryPrimitives.WriteInt64BigEndian(parsedData, data);
-        EncryptIfNecessary(ref parsedData);
-        client.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.Long, parsedData));
     }
 
     private void SendString(Client client, string data) {
@@ -225,43 +174,11 @@ public partial class TcpMsServer {
 
     #region Broadcast_Methods
 
-    /// <summary>Sends a bool package to all clients.</summary>
-    public void BroadcastBool(bool data) {
-
-        foreach (Client client in Clients.Values)
-            SendBool(client.ID, data);
-
-    }
-
     /// <summary>Sends a byte package to all clients.</summary>
     public void BroadcastByte(byte data) {
 
         foreach (Client client in Clients.Values)
             SendByte(client, data);
-
-    }
-
-    /// <summary>Sends a <see cref="short"/> package to all clients.</summary>
-    public void BroadcastShort(short data) {
-
-        foreach (Client client in Clients.Values)
-            SendShort(client, data);
-
-    }
-
-    /// <summary>Sends an int package to all clients.</summary>
-    public void BroadcastInt(int data) {
-
-        foreach (Client client in Clients.Values)
-            SendInt(client, data);
-
-    }
-
-    /// <summary>Sends a <see cref="long"/> package to all clients.</summary>
-    public void BroadcastLong(long data) {
-
-        foreach (Client client in Clients.Values)
-            SendLong(client, data);
 
     }
 

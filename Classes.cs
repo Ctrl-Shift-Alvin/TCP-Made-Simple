@@ -145,6 +145,7 @@ public readonly struct Package {
     public enum PackageTypes : byte {
         None,
         Error,
+        ProtocolError,
         DisconnectRequest,
         Disconnect,
         Settings,
@@ -166,6 +167,7 @@ public readonly struct Package {
         TestRequest,
         Test,
         TestTrySuccess,
+        TestTryFailure,
 
         Ping,
         Pong,
@@ -193,6 +195,26 @@ public readonly struct Package {
     /// </summary>
     public readonly bool IsEmpty => PackageType == PackageTypes.None;
 
+    internal readonly TaskCompletionSource? TaskCompletion;
+    /// <summary>
+    /// Waits for this package to be sent.
+    /// </summary>
+    /// <returns>A task that finishes when the package was sent</returns>
+    /// <exception cref="InvalidOperationException">This instance does not have a task assigned.</exception>
+    public async Task Await() {
+
+        if (TaskCompletion == null)
+            throw new InvalidOperationException("This instance did not assign a task.");
+
+        await TaskCompletion.Task;
+
+    }
+
+    /// <summary>
+    /// Notifies that this package was sent.
+    /// </summary>
+    public void TryNotifySent() => TaskCompletion?.SetResult();
+
     #endregion
     #region Operators
     /// <returns>true if the left package contents are the same as the right's; otherwise false.</returns>
@@ -206,17 +228,21 @@ public readonly struct Package {
     /// Create an empty package instance.
     /// </summary>
     /// <remarks><see cref="Data"/> will be null.</remarks>
-    public Package(PackageTypes type) {
+    internal Package(PackageTypes type, bool useTask = false) {
         PackageType = type;
         DataType = DataTypes.Empty;
         Data = null;
         DataLength = 0;
+
+        if (useTask)
+            TaskCompletion = new();
+
     }
 
     /// <summary>
     /// Create an instance and copy <paramref name="data"/> to it.
     /// </summary>
-    public Package(PackageTypes packageType, DataTypes dataType, byte[]? data, bool copyData = true) {
+    internal Package(PackageTypes packageType, DataTypes dataType, byte[]? data, bool copyData = true, bool useTask = false) {
 
         PackageType = packageType;
         DataType = dataType;
@@ -232,6 +258,9 @@ public readonly struct Package {
                 Data = data;
             DataLength = data.Length;
         }
+
+        if (useTask)
+            TaskCompletion = new();
     }
 
     #endregion
@@ -312,11 +341,6 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
     private ManualResetEventSlim ObtainHandlerPause;
     private SemaphoreSlimUsing ObtainHandlerSync;
 
-    private ConcurrentQueue<Package> InternalQueue;
-    private Task InternalHandlerTask;
-    private CancellationTokenSource InternalHandlerCancel;
-    private ManualResetEventSlim InternalHandlerPause;
-
     private Task DispatchHandlerTask;
     private CancellationTokenSource DispatchHandlerCancel;
     private ManualResetEventSlim DispatchHandlerPause;
@@ -346,58 +370,6 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
         Disconnected
     }
 
-    protected async Task Error(Errors error, bool isDispatch) {
-
-        //pause the OTHER thread (e.g. obtain thread calls, so we pause dispatch, since obtain is already technically paused)
-        if (isDispatch)
-            await PauseObtainAsync();
-        else
-            await PauseDispatchAsync();
-
-        //handle error
-        if (await OnError(error)) {
-
-            //if error was resolved, resume the other thread and continue
-            if (isDispatch)
-                ResumeObtain();
-            else
-                ResumeDispatch();
-
-        } else {
-
-            //if error was not resolved, cancel all threads (the threads will dispose of resources)
-            await DispatchHandlerCancel.CancelAsync();
-            await ObtainHandlerCancel.CancelAsync();
-
-        }
-
-    }
-
-    public async Task<bool> Error(Errors error) {
-
-        await PauseObtainAsync();
-        await PauseDispatchAsync();
-
-        //flush buffers (a fresh start is always good in bad times :)
-        await Stream.FlushAsync();
-
-        //handle error
-        if (await OnError(error)) {
-
-            ResumeObtain();
-            ResumeDispatch();
-            return true;
-
-        } else {
-
-            //if error was not resolved, cancel all threads (the threads will dispose of resources)
-            await DispatchHandlerCancel.CancelAsync();
-            await ObtainHandlerCancel.CancelAsync();
-            return false;
-
-        }
-    }
-
     #region Abstract/Virtual
 
     /// <summary>
@@ -412,7 +384,7 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
     /// <summary>
     /// Override to handle errors. Return true if base should resume obtaining/dispatching threads; otherwise false.
     /// </summary>
-    protected abstract Task<bool> OnError(Errors error);
+    protected abstract Task OnError(Errors error);
 
     /// <summary>
     /// Starts the obtain and dispatch threads.
@@ -479,38 +451,42 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
             //If PauseReceive() is in the sync, this line returns false, and the pause state is rechecked. PauseReceive() can then continue normally.
             if (!ObtainHandlerSync.Wait(0))
                 continue;
-            using (ObtainHandlerSync) {
 
-                Package incoming;
-                try {
+            Package incoming;
+            try {
+
+                //The using block here is crucial so that even when an exception is thrown, the semaphore is left before continuing. OnError WILL call "await PauseAllAsync"
+                //which also awaits entering this semaphore.
+                using (ObtainHandlerSync) {
                     incoming = await ObtainPackageAsync(ObtainHandlerCancel.Token);
-                } catch (OperationCanceledException) {
-
-                    break;
-
-                } catch (InvalidOperationException) {
-
-                    await Error(Errors.CannotRead, false);
-                    continue;
-
-                } catch (TcpMsUnexpectedPackageException) {
-
-                    await Error(Errors.ErrorPackage, false);
-                    continue;
-
-                } catch (TcpMsTimeoutException) {
-
-                    await Error(Errors.ErrorPackage, false);
-                    continue;
-
                 }
 
-                if (incoming.IsInternalPackage)
-                    await OnReceivedInternalPackage(incoming);
-                else
-                    OnReceivedDataPackage(incoming);
+            } catch (OperationCanceledException) {
+
+                break;
+
+            } catch (InvalidOperationException) {
+
+                await OnError(Errors.CannotRead);
+                continue;
+
+            } catch (TcpMsUnexpectedPackageException) {
+
+                await OnError(Errors.ErrorPackage);
+                continue;
+
+            } catch (TcpMsTimeoutException) {
+
+                await OnError(Errors.ErrorPackage);
+                continue;
 
             }
+
+            if (incoming.IsInternalPackage)
+                await OnReceivedInternalPackage(incoming);
+            else
+                OnReceivedDataPackage(incoming); 
+
 
         }
 
@@ -529,6 +505,9 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
     /// Wait for the current package to finish sending and pause the receiving thread.
     /// </summary>
     public async Task PauseObtainAsync() {
+
+        if (!ObtainHandlerPause.IsSet)
+            return;
 
         //tell the receiving thread to pause
         ObtainHandlerPause.Reset();
@@ -583,27 +562,27 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
             //same edge case as described in ObtainHandler()
             if (!DispatchHandlerSync.Wait(0))
                 continue;
-            using (DispatchHandlerSync) {
 
-                if (QueueOut.TryDequeue(out Package outgoing)) {
+            if (QueueOut.TryDequeue(out Package outgoing)) {
 
-                    try {
-
+                try {
+                    //same situation as in ObtainHandler()
+                    using (DispatchHandlerSync) {
                         await DispatchPackageAsync(outgoing);
-
-                    } catch (InvalidOperationException) {
-
-                        await Error(Errors.CannotWrite, true);
-                        continue;
-
                     }
-                }
 
+                } catch (InvalidOperationException) {
+
+                    await OnError(Errors.CannotWrite);
+                    continue;
+
+                }
             }
+
 
         }
 
-        //QueueOut.Clear(); we do not want to clear the queue, since we might want to manually handle it
+        //No QueueOut.Clear() since we might want to manually handle it
         DispatchHandlerCancel.Dispose();
         DispatchHandlerPause.Dispose();
         DispatchHandlerSync.ActualDispose();
@@ -631,6 +610,9 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
     /// Waits for the package to finish dispatching and pauses the dispatching thread.
     /// </summary>
     public async Task PauseDispatchAsync() {
+
+        if (!DispatchHandlerPause.IsSet)
+            return;
 
         DispatchHandlerPause.Reset();
 
@@ -687,13 +669,22 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
 
     #endregion
 
-    #region InternalHandler
-
-    private async Task InternalHandler() {
-
+    public void StartAll() {
+        StartDispatch();
+        StartObtain();
     }
 
-    #endregion
+    public async Task PauseAllAsync() => await Task.WhenAll(PauseDispatchAsync(), PauseObtainAsync());
+
+    public void ResumeAll() {
+        ResumeDispatch();
+        ResumeObtain();
+    }
+
+    public async Task StopAll() {
+        await Task.WhenAll(StopDispatchAsync(), StopObtainAsync());
+    }
+
 
     #region Dispatch/Obtain
     /// <summary>

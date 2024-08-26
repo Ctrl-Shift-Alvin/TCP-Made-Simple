@@ -87,7 +87,7 @@ partial class TcpMsServer {
 
                         await Task.Delay(Settings.PingTimeoutMs, PingCancel.Token);
                         if (PongStatus == false) {
-                            await Error(Errors.PingTimeout);
+                            await OnError(Errors.PingTimeout);
                         }
 
                     }
@@ -170,37 +170,35 @@ partial class TcpMsServer {
 
         protected override async Task OnReceivedInternalPackage(Package package) {
 
-            //Note: the obtain thread is definitely paused here
+            async Task HandleOperation(Task<OperationResult> task) {
 
-            async Task HandleOperationResult(Task<OperationResult> task) {
-
-                await PauseDispatchAsync();
+                await PauseAllAsync();
 
                 switch (await task) {
 
                     case OperationResult.Disconnected: {
 
-                        await Error(Errors.Disconnected, false);
+                        await OnError(Errors.Disconnected);
 
                     }
                     break;
 
                     case OperationResult.Failed: {
 
-                        await Error(Errors.IncorrectPackage, false);
+                        await OnError(Errors.IncorrectPackage);
 
                     }
                     break;
 
                     case OperationResult.Error: {
 
-                        await Error(Errors.ErrorPackage, false);
+                        await OnError(Errors.ErrorPackage);
 
                     }
                     break;
 
                     case OperationResult.Succeeded: {
-                        ResumeDispatch();
+                        ResumeAll();
                     }
                     break;
 
@@ -212,10 +210,12 @@ partial class TcpMsServer {
 
                 case Package.PackageTypes.DisconnectRequest: {
 
-                    await PauseDispatchAsync();
+                    await StopDispatchAsync();
+                    //This task is running in the obtain handler, so do not await StopObtain here.
+                    _ = StopObtainAsync();
 
                     await Manual_DispatchDisconnect();
-                    await StopAsync(false);
+
                     ServerInstance.RemoveClient(this);
 
                 }
@@ -230,14 +230,13 @@ partial class TcpMsServer {
 
                 case Package.PackageTypes.TestRequest: {
 
-                    await HandleOperationResult(Manual_ValidateConnection());
+                    await HandleOperation(Manual_ValidateConnection());
 
                 }
                 break;
-                
 
                 default: {
-                    await Error(Errors.UnexpectedPackage, false);
+                    await OnError(Errors.UnexpectedPackage);
                 }
                 break;
 
@@ -245,83 +244,100 @@ partial class TcpMsServer {
 
         }
 
-        protected override async Task<bool> OnError(Errors error) {
+        protected override async Task OnError(Errors error) {
 
-            //Note: the obtain/dispatch threads are definitely paused here
+            async Task HandleOperation(Task<OperationResult> task) {
 
-            async Task<bool> HandleOperation(Task<OperationResult> task) {
+                await PauseAllAsync();
 
                 switch (await task) {
 
                     case OperationResult.Disconnected: {
+                        await StopAll();
                         ServerInstance.RemoveClient(this);
                     }
-                    return false;
+                    return;
 
                     case OperationResult.Error: {
                         
                         var result = await Manual_HandlePanic();
 
-                        if (result == OperationResult.Disconnected) {
+                        if (result != OperationResult.Succeeded) {
+                            await StopAll();
                             ServerInstance.RemoveClient(this);
-                            return false;
+                            return;
                         }
                         
                     }
-                    return true;
+                    break;
 
                     case OperationResult.Failed: {
 
                         var result = await Manual_HandlePanic();
 
-                        if (result == OperationResult.Disconnected) {
+                        if (result != OperationResult.Succeeded) {
+                            await StopAll();
                             ServerInstance.RemoveClient(this);
-                            return false;
+                            return;
                         }
 
                     }
-                    return true;
+                    break;
 
                     case OperationResult.Succeeded:
-                        return true;
+                        break;
 
-                    default: return false;
                 }
+
+                ResumeAll();
 
             }
 
             switch (error) {
 
-                case Errors.ReadTimeout:
-                    return await HandleOperation(Manual_HandlePanic());
+                case Errors.ReadTimeout: {
+
+                    await HandleOperation(Manual_HandlePanic());
+
+                }
+                return;
 
                 case Errors.CannotWrite: {
 
                     ServerInstance.RemoveClient(this);
 
                 }
-                return false;
+                return;
 
                 case Errors.CannotRead: {
 
                     ServerInstance.RemoveClient(this);
 
                 }
-                return false;
+                return;
 
-                case Errors.ErrorPackage:
-                    return await HandleOperation(Manual_HandlePanic());
+                case Errors.ErrorPackage: {
+
+                    await HandleOperation(Manual_HandlePanic());
+
+                }
+                return;
 
 
-                case Errors.PingTimeout:
-                    return await HandleOperation(Manual_HandlePanic());
+                case Errors.PingTimeout: {
+
+                    await HandleOperation(Manual_HandlePanic());
+
+                }
+                return;
 
                 case Errors.IncorrectPackage: {
-                    
-                    return await HandleOperation(Manual_HandlePanic());
-                }
 
-                default: return false;
+                    await HandleOperation(Manual_HandlePanic());
+
+                }
+                return;
+
             }
 
         }
@@ -496,7 +512,7 @@ partial class TcpMsServer {
                         await DispatchPackageAsync(new Package(Package.PackageTypes.TestTrySuccess));
                         continue;
                     } else {
-                        await Manual_DispatchError();
+                        await DispatchPackageAsync(new Package(Package.PackageTypes.TestTryFailure));
                         return OperationResult.Failed;
                     }
 
@@ -516,38 +532,36 @@ partial class TcpMsServer {
 
         }
 
-        /// <summary>Calls panic on the client. Then calls <see cref="Manual_ValidateConnection()"/> until the connection works or max panic count is reached.</summary>
+        /// <summary>Calls panic on the client and tries to rejoin the client.</summary>
         internal async Task<OperationResult> Manual_HandlePanic() {
 
-            do {
+            try {
 
-                try {
+                if (PanicCount >= Settings.MaxPanicsPerClient) {
+                    await Manual_DispatchDisconnect();
+                    return OperationResult.Disconnected;
+                }
 
-                    if (PanicCount >= Settings.MaxPanicsPerClient) {
-                        await Manual_DispatchDisconnect();
-                        return OperationResult.Disconnected;
-                    }
+                IncrementPanic();
 
-                    IncrementPanic();
+                await DispatchPackageAsync(new Package(Package.PackageTypes.Panic));
 
-                    await DispatchPackageAsync(new Package(Package.PackageTypes.Panic));
+                //wait for the client to "reset" by clearing its buffer, so it "finds" the next package header
+                await Task.Delay(100);
 
-                    //wait for the client to "reset" by clearing its buffer, so it "finds" the next package header
-                    await Task.Delay(100);
+                if (!await Manual_JoinClient()) {
 
-                    if (!await Manual_JoinClient()) {
-                        await Manual_DispatchDisconnect();
-                        return OperationResult.Disconnected;
-                    }
-
-
-                } catch (InvalidOperationException) {
-
+                    await Manual_DispatchDisconnect();
                     return OperationResult.Disconnected;
 
                 }
 
-            } while (await Manual_ValidateConnection() != OperationResult.Succeeded);
+
+            } catch (InvalidOperationException) {
+
+                return OperationResult.Disconnected;
+
+            }
 
             ServerInstance.OnClientPanic(ID);
             return OperationResult.Succeeded;
@@ -565,7 +579,7 @@ partial class TcpMsServer {
         }
 
         /// <summary>
-        /// Sends the server settings and if necessary, authenticates and sends encryption.
+        /// Sends the server settings and if necessary, authenticates and sends encryption. Then validates once.
         /// </summary>
         /// <returns>true if everything succeeded; otherwise false.</returns>
         internal async Task<bool> Manual_JoinClient() {
@@ -575,11 +589,13 @@ partial class TcpMsServer {
 
             if (Settings.EncryptionEnabled) {
 
-                //cannot use panic if the client is not authenticated, so just give up
                 if (await Manual_AuthenticateClient() != OperationResult.Succeeded)
                     return false;
 
                 if (await Manual_SendEncryption() != OperationResult.Succeeded)
+                    return false;
+
+                if (await Manual_ValidateConnection() != OperationResult.Succeeded)
                     return false;
             }
             return true;
@@ -644,31 +660,10 @@ partial class TcpMsServer {
             return;
         }
 
-        if (!await VerifyConnectionAsync(client)) {
-            RemoveClient(client);
-            return;
-        }
-
         Clients.TryAdd(client.ID, client);
         OnClientConnected(client.ID);
 
         client.Start();
-
-    }
-
-
-    private static async Task<bool> VerifyConnectionAsync(Client client) {
-
-        await client.PauseDispatchAsync();
-        await client.PauseObtainAsync();
-
-        if (await client.Manual_ValidateConnection() != PackageHandler.OperationResult.Succeeded) {
-            return await client.Error(PackageHandler.Errors.IncorrectPackage); //Error handles pausing/resuming. So just return the result.
-        }
-
-        client.ResumeDispatch();
-        client.ResumeObtain();
-        return true;
 
     }
 
