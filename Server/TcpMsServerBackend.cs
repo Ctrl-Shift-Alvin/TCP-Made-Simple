@@ -8,25 +8,34 @@ using System.Threading.Tasks;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using AlvinSoft.Cryptography;
+using System.Diagnostics;
+using System.Buffers.Text;
 
 namespace AlvinSoft.TcpMs;
 
 //"Backend"
-partial class TcpMsServer {
+/// <summary>
+/// Allows simple usage of a TCP server to send/receive data to/from multiple <see cref="TcpListener"/> while implementing many useful features.
+/// </summary>
+/// <remarks>Creates a new instance and assigns the address and port that the internal <see cref="TcpListener"/> listens to. Does not start the listening process.</remarks>
+/// <param name="ip">The used ip that the internal <see cref="TcpListener"/> listens to.</param>
+/// <param name="port">The port to listen to.</param>
+/// <param name="settings">The settings that this server instance uses.</param>
+partial class TcpMsServer(IPAddress ip, ushort port, ServerSettings settings) {
 
     #region Fields
 
     private TcpListener Listener;
-    private ServerSettings Settings;
+    private ServerSettings Settings = settings;
     private AesEncryption Encryption;
-    private ConcurrentDictionary<byte[], Client> Clients; 
+    private ConcurrentDictionary<byte[], Client> Clients;
 
     /// <summary>The IP that the server listens to</summary>
-    public IPAddress IP { get; internal set; }
+    public IPAddress IP { get; internal set; } = ip;
     /// <summary>The port that the server uses</summary>
-    public ushort Port { get; internal set; }
+    public ushort Port { get; internal set; } = port;
 
-    /// <summary>true if this instance has called <see cref="StartAsync(IPAddress, ushort, ServerSettings)"/> and is not stopped; otherwise false.</summary>
+    /// <summary>true if this instance has called <see cref="StartAsync()"/> and is not stopped; otherwise false.</summary>
     public bool IsStarted { get; internal set; }
 
     private Task ListenerLoopTask;
@@ -39,7 +48,8 @@ partial class TcpMsServer {
         private readonly TcpMsServer ServerInstance = server;
         private ServerSettings Settings => ServerInstance.Settings;
 
-        internal byte[] ID { get; } = id;
+        internal readonly byte[] ID = id;
+        internal readonly string ReadableID = Convert.ToBase64String(id);
         internal TcpClient TcpClient = client;
 
         protected override CancellationToken TimeoutToken => new CancellationTokenSource(ServerInstance.Settings.ReceiveTimeoutMs).Token;
@@ -306,12 +316,12 @@ partial class TcpMsServer {
 
             try {
                     
-                //tell the client if encryption is being used
+                //send info package with 255 if no encryption is used, and anything else to authenticate
                 if (Settings.EncryptionEnabled) {
-                    await DispatchPackageAsync(new Package(Package.PackageTypes.Auth_Info, Package.DataTypes.Blob, [byte.MaxValue]));
-                } else {
                     await DispatchPackageAsync(new Package(Package.PackageTypes.Auth_Info, Package.DataTypes.Blob, [0]));
-                    return false;
+                } else {
+                    await DispatchPackageAsync(new Package(Package.PackageTypes.Auth_Info, Package.DataTypes.Blob, [byte.MaxValue]));
+                    return true;
                 }
 
                 AesEncryption encryptionOut = new() {
@@ -518,17 +528,25 @@ partial class TcpMsServer {
         /// <returns>true if everything succeeded; otherwise false.</returns>
         internal async Task<bool> Manual_JoinClient() {
 
-            if (Settings.EncryptionEnabled) {
+            if (await Manual_AuthenticateClient() == false)
+                return false;
 
-                if (await Manual_AuthenticateClient() == false)
-                    return false;
+            Debug.WriteLine($"TcpMsServer.Client ID={ReadableID}: authenticated client");
+
+            if (Settings.EncryptionEnabled) {
 
                 if (await Manual_SendEncryption() != OperationResult.Succeeded)
                     return false;
 
-                if (await Manual_ValidateConnection() != OperationResult.Succeeded)
-                    return false;
+                Debug.WriteLine($"TcpMsServer.Client ID={ReadableID}: sent encryption");
+
             }
+
+            if (await Manual_ValidateConnection() != OperationResult.Succeeded)
+                return false;
+
+            Debug.WriteLine($"TcpMsServer.Client ID={ReadableID}: validated client connection");
+
             return true;
 
         }
@@ -564,11 +582,14 @@ partial class TcpMsServer {
 
         ListenerLoopCancel = new();
 
+        Debug.WriteLine("TcpMsServer: Started listener loop");
+
         while (ClientCountOk() && !ListenerLoopCancel.IsCancellationRequested) {
 
             TcpClient client;
             try {
                 client = await Listener.AcceptTcpClientAsync(ListenerLoopCancel.Token); //accept connection
+                Debug.WriteLine("TcpMsServer: Accepted client connection");
             } catch (OperationCanceledException) {
                 break;
             }
@@ -577,26 +598,38 @@ partial class TcpMsServer {
                 _ = Task.Run(() => ConnectionHandler(client)); //handle connection
         }
 
+        Debug.WriteLine("TcpMsServer: Exited listener loop");
+
     }
 
     private async Task ConnectionHandler(TcpClient tcpClient) {
 
         Client client = new(GenerateID(), tcpClient, this);
 
+        Debug.WriteLine($"TcpMsServer: Started connection handler with ID {client.ReadableID}");
+
         if (!await client.Manual_JoinClient()) {
-            RemoveClient(client);
+
+            Debug.WriteLine($"TcpMsServer ID={client.ReadableID}: failed to join client");
+
+            client.Close();
             return;
         }
+
+        Debug.WriteLine($"TcpMsServer ID={client.ReadableID}: client joined");
 
         Clients.TryAdd(client.ID, client);
         OnClientConnected(client.ID);
 
         client.StartAll();
 
+        Debug.WriteLine($"TcpMsServer ID={client.ReadableID}: started obtain/dispatch loops");
+
     }
 
     /// <summary>Tries to remove <paramref name="client"/> from <see cref="Clients"/>. Calls <see cref="OnClientDisconnected(byte[])"/> if necessary.</summary>
     private void RemoveClient(Client client) {
+        Debug.WriteLine($"TcpMsServer: Removing client with ID {client.ReadableID}");
         if (Clients.TryRemove(client.ID, out _))
             OnClientDisconnected(client.ID);
     }

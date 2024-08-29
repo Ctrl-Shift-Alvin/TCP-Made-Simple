@@ -382,12 +382,13 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
     protected abstract Task OnError(Errors error);
 
     /// <summary>
-    /// Forcefully closes the underlying stream.
+    /// Cancels all threads and closes the underlying stream.
     /// </summary>
     public virtual void Close() {
 
         _ = StopAllAsync();
         Stream?.Close();
+        Stream?.Dispose();
 
     }
 

@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Runtime.Versioning;
+using System.Diagnostics;
 
 namespace AlvinSoft.TcpMs;
 
@@ -39,12 +40,9 @@ public partial class TcpMsServer {
 
     #region Start/Stop
     /// <summary>Starts the server and starts accepting connections.</summary>
-    public async Task StartAsync(IPAddress address, ushort port, ServerSettings settings) {
+    public async Task StartAsync() {
 
-        IP = address;
-        Port = port;
-        Settings = settings;
-        Listener = new(address, port);
+        Listener = new(IP, Port);
         Clients = [];
 
         if (Settings.EncryptionEnabled) {
@@ -54,6 +52,7 @@ public partial class TcpMsServer {
         }
 
         Listener.Start();
+        Debug.WriteLine("TcpMsServer: Started listener");
 
         await StartAcceptConnectionsAsync();
 
@@ -106,6 +105,8 @@ public partial class TcpMsServer {
             ListenerLoopTask = Task.Run(ListenerLoop);
 
         } else if (ListenerLoopCancel.IsCancellationRequested) {
+
+            Debug.WriteLine("TcpMsServer: Awaiting listener loop to restart");
 
             await ListenerLoopTask;
             ListenerLoopTask = Task.Run(ListenerLoop);

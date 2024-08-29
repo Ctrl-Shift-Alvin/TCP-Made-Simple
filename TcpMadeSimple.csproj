@@ -16,6 +16,14 @@
     <DocumentationFile>bin\Debug\TcpMadeSimple.xml</DocumentationFile>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="SimpleTcpTest\**" />
+    <Compile Remove="Test\**" />
+    <EmbeddedResource Remove="SimpleTcpTest\**" />
+    <EmbeddedResource Remove="Test\**" />
+    <None Remove="SimpleTcpTest\**" />
+    <None Remove="Test\**" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
     <PackageReference Include="System.Data.DataSetExtensions" Version="4.5.0" />
   </ItemGroup>

@@ -4,6 +4,8 @@ using System.Threading.Tasks;
 using System.Threading;
 using System.Net.Sockets;
 using System.Runtime.Versioning;
+using System.Diagnostics;
+using static AlvinSoft.TcpMs.TcpMsClient;
 
 namespace AlvinSoft.TcpMs;
 
@@ -21,30 +23,31 @@ public partial class TcpMsClient(string hostname, ushort port) {
     public delegate void Disconnected();
     public delegate void Panic();
 
-    public event Connected OnConnectEvent;
-    public event Disconnected OnDisconnectEvent;
+    public event Connected ConnectEvent;
+    public event Disconnected DisconnectEvent;
     /// <summary>
     /// Triggered when this client had an error and resolved it. Use it to resend potentially important data that was lost.
     /// </summary>
     public event Panic OnPanicEvent;
 
-    private void OnConnected() => OnConnectEvent?.Invoke();
-    private void OnDisconnect() => OnDisconnectEvent?.Invoke();
+    private void OnConnected() => ConnectEvent?.Invoke();
+    private void OnDisconnect() => DisconnectEvent?.Invoke();
     private void OnPanic() => OnPanicEvent?.Invoke();
 
 
     public delegate void BlobReceived(byte[] data);
-    public event BlobReceived OnBlobReceivedEvent;
-    private void OnBlobReceived(byte[] data) => OnBlobReceivedEvent?.Invoke(data);
+    public event BlobReceived BlobReceivedEvent;
+    private void OnBlobReceived(byte[] data) => BlobReceivedEvent?.Invoke(data);
 
     public delegate void StringReceived(string data);
-    public event StringReceived OnStringReceivedEvent;
-    private void OnStringReceived(string data) => OnStringReceivedEvent?.Invoke(data);
+    public event StringReceived StringReceivedEvent;
+    private void OnStringReceived(string data) => StringReceivedEvent?.Invoke(data);
 
 #pragma warning restore CS1591
     #endregion
 
     /// <summary>Try to connect to the server and authenticate.</summary>
+    /// <remarks>Leave <paramref name="password"/> set to <see langword="null"/> if the server doesn't use authentication/encryption.</remarks>
     /// <returns>A task that returns true if the connection (and authentication) succeeded; otherwise false.</returns>
     public async Task<bool> TryConnectAsync(string password = null, CancellationToken cancellationToken = default) {
 
@@ -52,25 +55,43 @@ public partial class TcpMsClient(string hostname, ushort port) {
         if (password != null)
             Settings.Password = new(password);
 
+        TcpClient tcp = new();
         try {
 
-            TcpClient tcp = new();
             await tcp.ConnectAsync(Hostname, port, cancellationToken);
 
-            ClientInstance = new(this, tcp);
+        } catch (OperationCanceledException) {
 
-            if (await ClientInstance.Manual_JoinClient()) {
-
-                ClientInstance.StartAll();
-                return true;
-
-            } else {
-                return false;
-            }
+            Debug.WriteLine($"TcpMsClient: timed out connecting to server");
+            return false;
 
         } catch {
+
+            Debug.WriteLine($"TcpMsClient: could not connect to server");
+            return false;
+
+        }
+
+        Debug.WriteLine($"TcpMsClient: connected to server");
+
+        ClientInstance = new(this, tcp);
+
+        if (await ClientInstance.Manual_JoinClient()) {
+
+            Debug.WriteLine($"TcpMsClient: joined server");
+
+            ClientInstance.StartAll();
+
+            Debug.WriteLine($"TcpMsClient: started obtain/dispatch threads");
+
+            return true;
+
+        } else {
+
+            Debug.WriteLine($"TcpMsClient: could not join server");
             Close();
             return false;
+
         }
 
     }
@@ -88,7 +109,10 @@ public partial class TcpMsClient(string hostname, ushort port) {
 
     /// <summary>Closes the client.</summary>
     /// <remarks>Use <see cref="DisconnectAsync"/> to disconnect gracefully.</remarks>
-    public void Close() => ClientInstance?.Close();
+    public void Close() {
+        ClientInstance?.Close();
+        Encryption?.Dispose();
+    }
 
     #region Send_Methods
 

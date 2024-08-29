@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Linq;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
@@ -192,14 +193,15 @@ partial class TcpMsClient {
         /// <returns><see langword="true"/> if the authentication was successful; otherwise <see langword="false"/>.</returns>
         public async Task<bool> Manual_Authenticate() {
 
-            
-
             try {
 
+                //receive info package, if data[0] is 255, then we don't need to authenticate
                 Package infoPackage = await ObtainExpectedPackageAsync(Package.PackageTypes.Auth_Info);
                 if (infoPackage.Data[0] == byte.MaxValue) {
-                    Settings.EncryptionEnabled = true;
+                    Settings.EncryptionEnabled = false;
                     return true;
+                } else {
+                    Settings.EncryptionEnabled = true;
                 }
 
                 if (Settings.Password.IsEmpty)
@@ -369,15 +371,22 @@ partial class TcpMsClient {
             if (await Manual_Authenticate() == false)
                 return false;
 
+            Debug.WriteLine($"TcpMsClient.Client: authenticated");
+
             if (Settings.EncryptionEnabled) {
 
                 if (await Manual_ReceiveEncryption() != OperationResult.Succeeded)
                     return false;
 
-                if (await Manual_ValidateConnection() != OperationResult.Succeeded)
-                    return false;
-
+                Debug.WriteLine($"TcpMsClient.Client: received encryption");
             }
+
+            _ = await ObtainExpectedPackageAsync(Package.PackageTypes.TestRequest);
+            if (await Manual_ValidateConnection() != OperationResult.Succeeded)
+                return false;
+
+            Debug.WriteLine($"TcpMsClient.Client: validated connection");
+
             return true;
 
         }
