@@ -6,6 +6,8 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Runtime.Versioning;
 using System.Diagnostics;
+using System.Threading;
+using AlvinSoft.TcpMs.Packages;
 
 namespace AlvinSoft.TcpMs;
 
@@ -143,15 +145,38 @@ public partial class TcpMsServer {
 
     #region Send_Methods
 
-    /// <summary>Sends a byte package to a client</summary>
+    /// <summary>Queues a byte package to be sent to a client.</summary>
+    /// <remarks>Acts like <see cref="SendBlob(byte[], byte[])"/> but with length 1. Try to avoid this, since every package has a header data overhead.</remarks>
     public void SendByte(byte[] clientId, byte data) => SendByte(TryGetClient(clientId), data);
 
-    /// <summary>Sends a string package to a client</summary>
+    /// <summary>Queues a string package to be sent to a client.</summary>
     /// <remarks>The string is sent in UTF-16 format</remarks>
     public void SendString(byte[] clientId, string data) => SendString(TryGetClient(clientId), data);
 
-    /// <summary>Sends a byte array package to a client</summary>
+    /// <summary>Queues a blob package to be sent to a client.</summary>
     public void SendBlob(byte[] clientId, byte[] data) => SendBlob(TryGetClient(clientId), data);
+
+    /// <summary>Queues a byte package to be sent to a client and waits to be dispatched.</summary>
+    /// <remarks>Acts like <see cref="SendBlobAsync(byte[], byte[])"/> but with length 1. Try to avoid this, since every package has a header data overhead.</remarks>
+    public async Task SendByteAsync(byte[] clientId, byte data) => await SendByteAsync(TryGetClient(clientId), data);
+
+    /// <summary>Queues a string package to be sent to a client and waits to be dispatched.</summary>
+    /// <remarks>The string is sent in UTF-16 format</remarks>
+    public async Task SendStringAsync(byte[] clientId, string data) => await SendStringAsync(TryGetClient(clientId), data);
+
+    /// <summary>Queues a blob package to be sent to a client and waits to be dispatched.</summary>
+    public async Task SendBlobAsync(byte[] clientId, byte[] data) => await SendBlobAsync(TryGetClient(clientId), data);
+
+    /// <summary>Queues a byte package to be sent to a client and waits to be dispatched.</summary>
+    /// <remarks>Acts like <see cref="SendBlobAsync(byte[], byte[], CancellationToken)"/> but with length 1. Try to avoid this, since every package has a header data overhead.</remarks>
+    public async Task SendByteAsync(byte[] clientId, byte data, CancellationToken cancellationToken) => await SendByteAsync(TryGetClient(clientId), data, cancellationToken);
+
+    /// <summary>Queues a string package to be sent to a client and waits to be dispatched.</summary>
+    /// <remarks>The string is sent in UTF-16 format</remarks>
+    public async Task SendStringAsync(byte[] clientId, string data, CancellationToken cancellationToken) => await SendStringAsync(TryGetClient(clientId), data, cancellationToken);
+
+    /// <summary>Queues a blob package to be sent to a client and waits to be dispatched.</summary>
+    public async Task SendBlobAsync(byte[] clientId, byte[] data, CancellationToken cancellationToken) => await SendBlobAsync(TryGetClient(clientId), data, cancellationToken);
 
 
 
@@ -161,18 +186,58 @@ public partial class TcpMsServer {
         EncryptIfNecessary(ref parsedData);
         client.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.Byte, parsedData));
     }
-
     private void SendString(Client client, string data) {
 
         byte[] parsedData = Encoding.Unicode.GetBytes(data);
         EncryptIfNecessary(ref parsedData);
         client.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.String, parsedData));
     }
-
     private void SendBlob(Client client, byte[] data) {
 
         EncryptIfNecessary(ref data);
         client.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.Blob, data));
+    }
+
+    private async Task SendByteAsync(Client client, byte data) {
+
+        byte[] parsedData = [data];
+        EncryptIfNecessary(ref parsedData);
+        await client.SendAsync(new Package(Package.PackageTypes.Data, Package.DataTypes.Byte, parsedData, useTask: true));
+
+    }
+    private async Task SendStringAsync(Client client, string data) {
+
+        byte[] parsedData = Encoding.Unicode.GetBytes(data);
+        EncryptIfNecessary(ref parsedData);
+        await client.SendAsync(new Package(Package.PackageTypes.Data, Package.DataTypes.String, parsedData, useTask: true));
+
+    }
+    private async Task SendBlobAsync(Client client, byte[] data) {
+
+        EncryptIfNecessary(ref data);
+        await client.SendAsync(new Package(Package.PackageTypes.Data, Package.DataTypes.Blob, data, useTask: true));
+
+    }
+
+    private async Task SendByteAsync(Client client, byte data, CancellationToken cancellationToken) {
+
+        byte[] parsedData = [data];
+        EncryptIfNecessary(ref parsedData);
+        await client.SendAsync(new Package(Package.PackageTypes.Data, Package.DataTypes.Byte, parsedData, useTask: true), cancellationToken);
+
+    }
+    private async Task SendStringAsync(Client client, string data, CancellationToken cancellationToken) {
+
+        byte[] parsedData = Encoding.Unicode.GetBytes(data);
+        EncryptIfNecessary(ref parsedData);
+        await client.SendAsync(new Package(Package.PackageTypes.Data, Package.DataTypes.String, parsedData, useTask: true), cancellationToken);
+
+    }
+    private async Task SendBlobAsync(Client client, byte[] data, CancellationToken cancellationToken) {
+
+        EncryptIfNecessary(ref data);
+        await client.SendAsync(new Package(Package.PackageTypes.Data, Package.DataTypes.Blob, data, useTask: true), cancellationToken);
+
     }
     #endregion
 
@@ -185,7 +250,6 @@ public partial class TcpMsServer {
             SendByte(client, data);
 
     }
-
     /// <summary>Sends a string package to all clients.</summary>
     public void BroadcastString(string data) {
 
@@ -193,12 +257,81 @@ public partial class TcpMsServer {
             SendString(client, data);
 
     }
-
     /// <summary>Sends a byte array package to all clients.</summary>
     public void BroadcastBlob(byte[] data) {
 
         foreach (Client client in Clients.Values)
             SendBlob(client, data);
+
+    }
+
+    /// <summary>Queues a byte package to be sent to all clients and waits to be dispatched.</summary>
+    public async Task BroadcastByteAsync(byte data) {
+
+        List<Task> tasks = new(Clients.Count);
+
+        foreach (Client client in Clients.Values)
+            tasks.Add(SendByteAsync(client, data));
+
+        await Task.WhenAll(tasks);
+
+    }
+    /// <summary>Queues a string package to be sent to all clients and waits to be dispatched.</summary>
+    public async Task BroadcastStringAsync(string data) {
+
+        List<Task> tasks = new(Clients.Count);
+
+        foreach (Client client in Clients.Values)
+            tasks.Add(SendStringAsync(client, data));
+
+        await Task.WhenAll(tasks);
+
+    }
+    /// <summary>Queues a blob package to be sent to all clients and waits to be dispatched.</summary>
+    public async Task BroadcastBlobAsync(byte[] data) {
+
+        List<Task> tasks = new(Clients.Count);
+
+        foreach (Client client in Clients.Values)
+            tasks.Add(SendBlobAsync(client, data));
+
+        await Task.WhenAll(tasks);
+
+    }
+
+    /// <summary>Queues a byte package to be sent to all clients and waits to be dispatched.</summary>
+    public async Task BroadcastByteAsync(byte data, CancellationToken cancellationToken) {
+
+        List<Task> tasks = new(Clients.Count);
+
+        foreach (Client client in Clients.Values)
+            tasks.Add(SendByteAsync(client, data, cancellationToken));
+
+        await Task.WhenAll(tasks);
+
+    }
+    /// <summary>Queues a string package to be sent to all clients and waits to be dispatched.</summary>
+    public async Task BroadcastStringAsync(string data, CancellationToken cancellationToken) {
+
+        List<Task> tasks = new(Clients.Count);
+
+        foreach (Client client in Clients.Values)
+            tasks.Add(SendStringAsync(client, data, cancellationToken));
+
+        await Task.WhenAll(tasks);
+
+    }
+    /// <summary>Queues a blob package to be sent to all clients and waits to be dispatched.</summary>
+    public async Task BroadcastBlobAsync(byte[] data, CancellationToken cancellationToken) {
+
+        Debug.WriteLine($"TcpMsServer: broadcasting data to {Clients.Count} {(Clients.Count == 1 ? "client" : "clients")}");
+
+        List<Task> tasks = new(Clients.Count);
+
+        foreach (Client client in Clients.Values)
+            tasks.Add(SendBlobAsync(client, data, cancellationToken));
+
+        await Task.WhenAll(tasks);
 
     }
 

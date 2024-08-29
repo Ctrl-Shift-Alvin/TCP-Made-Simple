@@ -6,6 +6,7 @@ using System.Net.Sockets;
 using System.Runtime.Versioning;
 using System.Diagnostics;
 using static AlvinSoft.TcpMs.TcpMsClient;
+using AlvinSoft.TcpMs.Packages;
 
 namespace AlvinSoft.TcpMs;
 
@@ -116,7 +117,7 @@ public partial class TcpMsClient(string hostname, ushort port) {
 
     #region Send_Methods
 
-    /// <summary>Send a bool package</summary>
+    /// <summary>Queues a byte package to be sent to the server.</summary>
     /// <returns>A task that finishes when the data was sent</returns>
     public void SendByte(byte data) {
 
@@ -125,8 +126,7 @@ public partial class TcpMsClient(string hostname, ushort port) {
         ClientInstance.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.Byte, bytes, false));
 
     }
-
-    /// <summary>Send a string package</summary>
+    /// <summary>Queues a string package to be sent to the server.</summary>
     /// <remarks>The string is UTF-16 encoded</remarks>
     /// <returns>A task that finishes when the data was sent</returns>
     public void SendString(string data) {
@@ -135,14 +135,69 @@ public partial class TcpMsClient(string hostname, ushort port) {
         EncryptIfNeccessary(ref bytes);
         ClientInstance.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.String, bytes, false));
     }
-
-    /// <summary>Send a byte array package</summary>
+    /// <summary>Queues a blob package to be sent to the server.</summary>
     /// <returns>A task that finishes when the data was sent</returns>
     public void SendBlob(byte[] data) {
 
         byte[] bytes = data;
         EncryptIfNeccessary(ref bytes);
         ClientInstance.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.Blob, bytes, false));
+
+    }
+
+    /// <summary>Queues a byte package to be sent to the server and awaits to be dispatched.</summary>
+    /// <returns>A task that finishes when the data was sent</returns>
+    public async Task SendByteAsync(byte data) {
+
+        byte[] bytes = [data];
+        EncryptIfNeccessary(ref bytes);
+        await ClientInstance.SendAsync(new Package(Package.PackageTypes.Data, Package.DataTypes.Byte, bytes, false, useTask: true));
+
+    }
+    /// <summary>Queues a string package to be sent to the server and awaits to be dispatched.</summary>
+    /// <remarks>The string is UTF-16 encoded</remarks>
+    /// <returns>A task that finishes when the data was sent</returns>
+    public async Task SendStringAsync(string data) {
+
+        byte[] bytes = Encoding.Unicode.GetBytes(data);
+        EncryptIfNeccessary(ref bytes);
+        await ClientInstance.SendAsync(new Package(Package.PackageTypes.Data, Package.DataTypes.String, bytes, false, useTask: true));
+    }
+    /// <summary>Queues a blob package to be sent to the server and awaits to be dispatched.</summary>
+    /// <returns>A task that finishes when the data was sent</returns>
+    public async Task SendBlobAsync(byte[] data) {
+
+        byte[] bytes = data;
+        EncryptIfNeccessary(ref bytes);
+        await ClientInstance.SendAsync(new Package(Package.PackageTypes.Data, Package.DataTypes.Blob, bytes, false, useTask: true));
+
+    }
+
+    /// <summary>Queues a byte package to be sent to the server and awaits to be dispatched.</summary>
+    /// <returns>A task that finishes when the data was sent</returns>
+    public async Task SendByteAsync(byte data, CancellationToken cancellationToken) {
+
+        byte[] bytes = [data];
+        EncryptIfNeccessary(ref bytes);
+        await ClientInstance.SendAsync(new Package(Package.PackageTypes.Data, Package.DataTypes.Byte, bytes, false, useTask: true), cancellationToken);
+
+    }
+    /// <summary>Queues a string package to be sent to the server and awaits to be dispatched.</summary>
+    /// <remarks>The string is UTF-16 encoded</remarks>
+    /// <returns>A task that finishes when the data was sent</returns>
+    public async Task SendStringAsync(string data, CancellationToken cancellationToken) {
+
+        byte[] bytes = Encoding.Unicode.GetBytes(data);
+        EncryptIfNeccessary(ref bytes);
+        await ClientInstance.SendAsync(new Package(Package.PackageTypes.Data, Package.DataTypes.String, bytes, false, useTask: true), cancellationToken);
+    }
+    /// <summary>Queues a blob package to be sent to the server and awaits to be dispatched.</summary>
+    /// <returns>A task that finishes when the data was sent</returns>
+    public async Task SendBlobAsync(byte[] data, CancellationToken cancellationToken) {
+
+        byte[] bytes = data;
+        EncryptIfNeccessary(ref bytes);
+        await ClientInstance.SendAsync(new Package(Package.PackageTypes.Data, Package.DataTypes.Blob, bytes, false, useTask: true), cancellationToken);
 
     }
 

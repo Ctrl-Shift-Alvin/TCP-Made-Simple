@@ -7,9 +7,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
-using AlvinSoft.Cryptography;
 using System.Diagnostics;
-using System.Buffers.Text;
+using AlvinSoft.Cryptography;
+using AlvinSoft.TcpMs.Packages;
 
 namespace AlvinSoft.TcpMs;
 
@@ -105,6 +105,8 @@ partial class TcpMsServer(IPAddress ip, ushort port, ServerSettings settings) {
 
         #region Overrides
         protected override void OnReceivedDataPackage(Package package) {
+
+            Debug.WriteLine($"TcpMsServer ID={ReadableID}: received data package");
 
             byte[] data = package.Data;
             ServerInstance.DecryptIfNecessary(ref data);

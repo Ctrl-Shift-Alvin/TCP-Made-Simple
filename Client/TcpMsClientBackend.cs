@@ -8,6 +8,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using AlvinSoft.Cryptography;
+using AlvinSoft.TcpMs.Packages;
 
 namespace AlvinSoft.TcpMs;
 
@@ -88,6 +89,8 @@ partial class TcpMsClient {
         }
 
         protected override void OnReceivedDataPackage(Package package) {
+
+            Debug.WriteLine("TcpMsClient: received data package");
 
             byte[] data = package.Data;
             TcpMsClientInstance.DecryptIfNeccessary(ref data);
