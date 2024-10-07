@@ -5,7 +5,6 @@ using System.Threading;
 using System.Net.Sockets;
 using System.Runtime.Versioning;
 using System.Diagnostics;
-using static AlvinSoft.TcpMs.TcpMsClient;
 using AlvinSoft.TcpMs.Packages;
 
 namespace AlvinSoft.TcpMs;

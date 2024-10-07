@@ -11,7 +11,7 @@ public class AlvinSoftTcpTests {
     public static TcpMsClient TestClient;
 
 
-    [TestMethod("Server/Client Test No Encryption")]
+    [TestMethod("Server/Client Test No Encryption No Ping")]
     public async Task Test1() {
 
         ServerSettings settings = new(null) {
@@ -27,8 +27,6 @@ public class AlvinSoftTcpTests {
 
         await TestSendReceive();
 
-        await TestClient.DisconnectAsync();
-        await TestServer.StopAsync();
 
     }
 
@@ -78,9 +76,9 @@ public class AlvinSoftTcpTests {
 
         };
 
-        await TestServer.BroadcastBlobAsync(sentData, new CancellationTokenSource(1000).Token);
+        await TestServer.BroadcastBlobAsync(sentData);
 
-        await Task.Delay(2000);
+        await Task.Delay(200);
 
         Assert.IsTrue(receivedData);
         
@@ -96,9 +94,9 @@ public class AlvinSoftTcpTests {
 
         };
 
-        await TestClient.SendBlobAsync(sentData, new CancellationTokenSource(1000).Token);
+        await TestClient.SendBlobAsync(sentData);
 
-        await Task.Delay(100);
+        await Task.Delay(200);
 
         Assert.IsTrue(receivedData);
 

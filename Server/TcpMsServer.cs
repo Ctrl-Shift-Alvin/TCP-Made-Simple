@@ -184,13 +184,13 @@ public partial class TcpMsServer {
 
         byte[] parsedData = [data];
         EncryptIfNecessary(ref parsedData);
-        client.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.Byte, parsedData));
+        client.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.Byte, parsedData, copyData: false));
     }
     private void SendString(Client client, string data) {
 
         byte[] parsedData = Encoding.Unicode.GetBytes(data);
         EncryptIfNecessary(ref parsedData);
-        client.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.String, parsedData));
+        client.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.String, parsedData, copyData: false));
     }
     private void SendBlob(Client client, byte[] data) {
 
