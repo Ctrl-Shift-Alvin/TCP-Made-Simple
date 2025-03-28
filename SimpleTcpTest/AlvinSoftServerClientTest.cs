@@ -18,10 +18,10 @@ public class AlvinSoftTcpTests {
             PingIntervalMs = 0
         };
 
-        TestServer = new(System.Net.IPAddress.Any, 2020, settings);
+        TestServer = new(System.Net.IPAddress.Any, 19910, settings);
         await TestServer.StartAsync();
 
-        TestClient = new("127.0.0.1", 2020);
+        TestClient = new("127.0.0.1", 19910);
         Assert.IsTrue(await TestClient.TryConnectAsync());
 
         await TestSendReceive();
@@ -36,10 +36,10 @@ public class AlvinSoftTcpTests {
 
         ServerSettings settings = new("password");
 
-        TestServer = new(System.Net.IPAddress.Any, 2020, settings);
+        TestServer = new(System.Net.IPAddress.Any, 19911, settings);
         await TestServer.StartAsync();
 
-        TestClient = new("127.0.0.1", 2020);
+        TestClient = new("127.0.0.1", 19911);
         Assert.IsTrue(await TestClient.TryConnectAsync("password"));
 
         await TestSendReceive();
@@ -57,10 +57,10 @@ public class AlvinSoftTcpTests {
             PingTimeoutMs = 500
         };
 
-        TestServer = new(System.Net.IPAddress.Any, 2020, settings);
+        TestServer = new(System.Net.IPAddress.Any, 19912, settings);
         await TestServer.StartAsync();
 
-        TestClient = new("127.0.0.1", 2020);
+        TestClient = new("127.0.0.1", 19912);
         Assert.IsTrue(await TestClient.TryConnectAsync("password"));
 
         await Task.Delay(settings.PingIntervalMs * 4);
