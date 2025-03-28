@@ -7,9 +7,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
-using System.Diagnostics;
 using AlvinSoft.Cryptography;
 using AlvinSoft.TcpMs.Packages;
+using System.Diagnostics;
+using System.Collections;
+using System.Collections.Generic;
 
 namespace AlvinSoft.TcpMs;
 
@@ -30,13 +32,19 @@ partial class TcpMsServer(IPAddress ip, ushort port, ServerSettings settings) {
     private AesEncryption Encryption;
     private ConcurrentDictionary<byte[], Client> Clients;
 
-    /// <summary>The IP that the server listens to</summary>
+    /// <summary>The IP that the server listens to.</summary>
     public IPAddress IP { get; internal set; } = ip;
-    /// <summary>The port that the server uses</summary>
+    /// <summary>The port that the server uses.</summary>
     public ushort Port { get; internal set; } = port;
 
     /// <summary>true if this instance has called <see cref="StartAsync()"/> and is not stopped; otherwise false.</summary>
     public bool IsStarted { get; internal set; }
+    /// <summary>The currently connected client count.</summary>
+    public int ClientCount => Clients.Count;
+
+    /// <summary>The IDs of all currently connected clients.</summary>
+    /// <remarks>No specific order is guaranteed!</remarks>
+    public IEnumerable<byte[]> ClientIDs => Clients.Keys;
 
     private Task ListenerLoopTask;
     private CancellationTokenSource ListenerLoopCancel;
@@ -64,7 +72,7 @@ partial class TcpMsServer(IPAddress ip, ushort port, ServerSettings settings) {
         private volatile bool pingStatus;
         internal bool PongStatus { get => pingStatus; set => pingStatus = value; }
 
-        internal CancellationTokenSource PingCancel;
+        private CancellationTokenSource PingCancel;
         internal void StartPing() {
 
             if (Settings.PingIntervalMs < 1)
@@ -73,40 +81,39 @@ partial class TcpMsServer(IPAddress ip, ushort port, ServerSettings settings) {
             if (Settings.PingTimeoutMs >= Settings.PingIntervalMs)
                 throw new ArgumentException("The ping interval cannot be lower than the ping timeout.", nameof(Settings.PingTimeoutMs));
 
-            try {
+            Task.Run(async () => {
 
                 PingCancel = new();
 
-                Task.Run(async () => {
+                while (!PingCancel.IsCancellationRequested) {
 
-                    while (!PingCancel.IsCancellationRequested) {
+                    await Task.Delay(Settings.PingIntervalMs - Settings.PingTimeoutMs, PingCancel.Token);
 
-                        await Task.Delay(Settings.PingIntervalMs - Settings.PingTimeoutMs, PingCancel.Token);
-                        Send(new Package(Package.PackageTypes.Ping));
+                    await SendAsync(new Package(Package.PackageTypes.Ping));
 
-                        await Task.Delay(Settings.PingTimeoutMs, PingCancel.Token);
-                        if (PongStatus == false) {
-                            await OnError(Errors.PingTimeout);
-                        }
+                    Dbg.Log($"TcpMsServer.Client ID={ReadableID}: Sent ping");
+                    await Task.Delay(Settings.PingTimeoutMs, PingCancel.Token);
 
+                    if (PongStatus == false) {
+                        await OnError(Errors.PingTimeout);
                     }
 
-                }, PingCancel.Token);
-
-            } catch (OperationCanceledException) {
-                return;
-            } finally {
-                PingCancel?.Dispose();
-            }
+                }
+                PingCancel.Dispose();
+            });
 
         }
-        internal void StopPing() => PingCancel?.Cancel();
+        internal void StopPing() {
+            try {
+                PingCancel?.Cancel();
+            } catch (ObjectDisposedException) {}
+        }
         #endregion
 
         #region Overrides
         protected override void OnReceivedDataPackage(Package package) {
 
-            Debug.WriteLine($"TcpMsServer ID={ReadableID}: received data package");
+            Dbg.Log($"TcpMsServer ID={ReadableID}: received data package");
 
             byte[] data = package.Data;
             ServerInstance.DecryptIfNecessary(ref data);
@@ -318,6 +325,7 @@ partial class TcpMsServer(IPAddress ip, ushort port, ServerSettings settings) {
 
             try {
                     
+                //CLIENT CHALLENGE -------------
                 //send info package with 255 if no encryption is used, and anything else to authenticate
                 if (Settings.EncryptionEnabled) {
                     await DispatchPackageAsync(new Package(Package.PackageTypes.Auth_Info, Package.DataTypes.Blob, [0]));
@@ -339,16 +347,19 @@ partial class TcpMsServer(IPAddress ip, ushort port, ServerSettings settings) {
 
                 Package response = await ObtainExpectedPackageAsync(Package.PackageTypes.Auth_Response);
 
-                if (Enumerable.SequenceEqual(challengeOutHash, response.Data))
+                if (Enumerable.SequenceEqual(challengeOutHash, response.Data)) {
                     await DispatchPackageAsync(new Package(Package.PackageTypes.Auth_Success));
-                else
+                } else {
                     await DispatchPackageAsync(new Package(Package.PackageTypes.Auth_Failure));
+                    return false;
+                }
 
-                AesEncryption encryptionIn;
+                //SERVER CHALLENGE -------------
+                Package saltIn = await ObtainExpectedPackageAsync(Package.PackageTypes.Auth_Salt);
                 Package ivIn = await ObtainExpectedPackageAsync(Package.PackageTypes.Auth_IV);
                 Package encryptedChallengeIn = await ObtainExpectedPackageAsync(Package.PackageTypes.Auth_Challenge);
 
-                encryptionIn = new(Settings.Password, encryptionOut.Salt, ivIn.Data);
+                AesEncryption encryptionIn = new(Settings.Password, saltIn.Data, ivIn.Data);
                 byte[] challengeIn = encryptionIn.DecryptBytes(encryptedChallengeIn.Data);
                 byte[] challengeInHash = SHA512.HashData(challengeIn);
 
@@ -533,21 +544,21 @@ partial class TcpMsServer(IPAddress ip, ushort port, ServerSettings settings) {
             if (await Manual_AuthenticateClient() == false)
                 return false;
 
-            Debug.WriteLine($"TcpMsServer.Client ID={ReadableID}: authenticated client");
+            Dbg.Log($"TcpMsServer.Client ID={ReadableID}: authenticated client");
 
             if (Settings.EncryptionEnabled) {
 
                 if (await Manual_SendEncryption() != OperationResult.Succeeded)
                     return false;
 
-                Debug.WriteLine($"TcpMsServer.Client ID={ReadableID}: sent encryption");
+                Dbg.Log($"TcpMsServer.Client ID={ReadableID}: sent encryption");
 
             }
 
             if (await Manual_ValidateConnection() != OperationResult.Succeeded)
                 return false;
 
-            Debug.WriteLine($"TcpMsServer.Client ID={ReadableID}: validated client connection");
+            Dbg.Log($"TcpMsServer.Client ID={ReadableID}: validated client connection");
 
             return true;
 
@@ -584,14 +595,14 @@ partial class TcpMsServer(IPAddress ip, ushort port, ServerSettings settings) {
 
         ListenerLoopCancel = new();
 
-        Debug.WriteLine("TcpMsServer: Started listener loop");
+        Dbg.Log("TcpMsServer: Started listener loop");
 
         while (ClientCountOk() && !ListenerLoopCancel.IsCancellationRequested) {
 
             TcpClient client;
             try {
                 client = await Listener.AcceptTcpClientAsync(ListenerLoopCancel.Token); //accept connection
-                Debug.WriteLine("TcpMsServer: Accepted client connection");
+                Dbg.Log("TcpMsServer: Accepted client connection");
             } catch (OperationCanceledException) {
                 break;
             }
@@ -600,7 +611,7 @@ partial class TcpMsServer(IPAddress ip, ushort port, ServerSettings settings) {
                 _ = Task.Run(() => ConnectionHandler(client)); //handle connection
         }
 
-        Debug.WriteLine("TcpMsServer: Exited listener loop");
+        Dbg.Log("TcpMsServer: Exited listener loop");
 
     }
 
@@ -608,30 +619,30 @@ partial class TcpMsServer(IPAddress ip, ushort port, ServerSettings settings) {
 
         Client client = new(GenerateID(), tcpClient, this);
 
-        Debug.WriteLine($"TcpMsServer: Started connection handler with ID {client.ReadableID}");
+        Dbg.Log($"TcpMsServer: Started connection handler with ID {client.ReadableID}");
 
         if (!await client.Manual_JoinClient()) {
 
-            Debug.WriteLine($"TcpMsServer ID={client.ReadableID}: failed to join client");
+            Dbg.Log($"TcpMsServer ID={client.ReadableID}: failed to join client");
 
             client.Close();
             return;
         }
 
-        Debug.WriteLine($"TcpMsServer ID={client.ReadableID}: client joined");
+        Dbg.Log($"TcpMsServer ID={client.ReadableID}: client joined");
 
         Clients.TryAdd(client.ID, client);
         OnClientConnected(client.ID);
 
         client.StartAll();
 
-        Debug.WriteLine($"TcpMsServer ID={client.ReadableID}: started obtain/dispatch loops");
+        Dbg.Log($"TcpMsServer ID={client.ReadableID}: started obtain/dispatch loops");
 
     }
 
     /// <summary>Tries to remove <paramref name="client"/> from <see cref="Clients"/>. Calls <see cref="OnClientDisconnected(byte[])"/> if necessary.</summary>
     private void RemoveClient(Client client) {
-        Debug.WriteLine($"TcpMsServer: Removing client with ID {client.ReadableID}");
+        Dbg.Log($"TcpMsServer: Removing client with ID {client.ReadableID}");
         if (Clients.TryRemove(client.ID, out _))
             OnClientDisconnected(client.ID);
     }

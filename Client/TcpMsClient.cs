@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 using System.Threading;
 using System.Net.Sockets;
 using System.Runtime.Versioning;
-using System.Diagnostics;
 using AlvinSoft.TcpMs.Packages;
 
 namespace AlvinSoft.TcpMs;
@@ -62,33 +61,33 @@ public partial class TcpMsClient(string hostname, ushort port) {
 
         } catch (OperationCanceledException) {
 
-            Debug.WriteLine($"TcpMsClient: timed out connecting to server");
+            Dbg.Log($"TcpMsClient: timed out connecting to server");
             return false;
 
         } catch {
 
-            Debug.WriteLine($"TcpMsClient: could not connect to server");
+            Dbg.Log($"TcpMsClient: could not connect to server");
             return false;
 
         }
 
-        Debug.WriteLine($"TcpMsClient: connected to server");
+        Dbg.Log($"TcpMsClient: connected to server");
 
         ClientInstance = new(this, tcp);
 
         if (await ClientInstance.Manual_JoinClient()) {
 
-            Debug.WriteLine($"TcpMsClient: joined server");
+            Dbg.Log($"TcpMsClient: joined server");
 
             ClientInstance.StartAll();
 
-            Debug.WriteLine($"TcpMsClient: started obtain/dispatch threads");
+            Dbg.Log($"TcpMsClient: started obtain/dispatch threads");
 
             return true;
 
         } else {
 
-            Debug.WriteLine($"TcpMsClient: could not join server");
+            Dbg.Log($"TcpMsClient: could not join server");
             Close();
             return false;
 
@@ -138,9 +137,8 @@ public partial class TcpMsClient(string hostname, ushort port) {
     /// <returns>A task that finishes when the data was sent</returns>
     public void SendBlob(byte[] data) {
 
-        byte[] bytes = data;
-        EncryptIfNeccessary(ref bytes);
-        ClientInstance.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.Blob, bytes, false));
+        EncryptIfNeccessary(ref data);
+        ClientInstance.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.Blob, data, false));
 
     }
 

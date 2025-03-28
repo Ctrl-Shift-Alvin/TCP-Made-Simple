@@ -1,11 +1,7 @@
-﻿using System;
-using System.Net;
-using System.Text;
+﻿using System.Text;
 using System.Threading.Tasks;
-using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Runtime.Versioning;
-using System.Diagnostics;
 using System.Threading;
 using AlvinSoft.TcpMs.Packages;
 
@@ -54,7 +50,7 @@ public partial class TcpMsServer {
         }
 
         Listener.Start();
-        Debug.WriteLine("TcpMsServer: Started listener");
+        Dbg.Log("TcpMsServer: Started listener");
 
         await StartAcceptConnectionsAsync();
 
@@ -108,7 +104,7 @@ public partial class TcpMsServer {
 
         } else if (ListenerLoopCancel.IsCancellationRequested) {
 
-            Debug.WriteLine("TcpMsServer: Awaiting listener loop to restart");
+            Dbg.Log("TcpMsServer: Awaiting listener loop to restart");
 
             await ListenerLoopTask;
             ListenerLoopTask = Task.Run(ListenerLoop);
@@ -324,7 +320,7 @@ public partial class TcpMsServer {
     /// <summary>Queues a blob package to be sent to all clients and waits to be dispatched.</summary>
     public async Task BroadcastBlobAsync(byte[] data, CancellationToken cancellationToken) {
 
-        Debug.WriteLine($"TcpMsServer: broadcasting data to {Clients.Count} {(Clients.Count == 1 ? "client" : "clients")}");
+        Dbg.Log($"TcpMsServer: broadcasting data to {Clients.Count} {(Clients.Count == 1 ? "client" : "clients")}");
 
         List<Task> tasks = new(Clients.Count);
 

@@ -1,8 +1,6 @@
 ﻿using System;
-using System.Diagnostics;
 using System.Linq;
 using System.Net.Sockets;
-using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -90,7 +88,7 @@ partial class TcpMsClient {
 
         protected override void OnReceivedDataPackage(Package package) {
 
-            Debug.WriteLine("TcpMsClient: received data package");
+            Dbg.Log("TcpMsClient: received data package");
 
             byte[] data = package.Data;
             TcpMsClientInstance.DecryptIfNeccessary(ref data);
@@ -198,6 +196,7 @@ partial class TcpMsClient {
 
             try {
 
+                //CLIENT CHALLENGE -----------
                 //receive info package, if data[0] is 255, then we don't need to authenticate
                 Package infoPackage = await ObtainExpectedPackageAsync(Package.PackageTypes.Auth_Info);
                 if (infoPackage.Data[0] == byte.MaxValue) {
@@ -225,6 +224,7 @@ partial class TcpMsClient {
                 if (response.PackageType != Package.PackageTypes.Auth_Success)
                     return false;
 
+                //SERVER CHALLENGE ---------------------
                 AesEncryption encryptionOut = new() {
                     Password = Settings.Password
                 };
@@ -374,21 +374,21 @@ partial class TcpMsClient {
             if (await Manual_Authenticate() == false)
                 return false;
 
-            Debug.WriteLine($"TcpMsClient.Client: authenticated");
+            Dbg.Log($"TcpMsClient.Client: authenticated");
 
             if (Settings.EncryptionEnabled) {
 
                 if (await Manual_ReceiveEncryption() != OperationResult.Succeeded)
                     return false;
 
-                Debug.WriteLine($"TcpMsClient.Client: received encryption");
+                Dbg.Log($"TcpMsClient.Client: received encryption");
             }
 
             _ = await ObtainExpectedPackageAsync(Package.PackageTypes.TestRequest);
             if (await Manual_ValidateConnection() != OperationResult.Succeeded)
                 return false;
 
-            Debug.WriteLine($"TcpMsClient.Client: validated connection");
+            Dbg.Log($"TcpMsClient.Client: validated connection");
 
             return true;
 

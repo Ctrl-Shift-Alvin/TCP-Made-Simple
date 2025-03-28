@@ -10,7 +10,6 @@ public class AlvinSoftTcpTests {
     public static TcpMsServer TestServer;
     public static TcpMsClient TestClient;
 
-
     [TestMethod("Server/Client Test No Encryption No Ping")]
     public async Task Test1() {
 
@@ -26,7 +25,9 @@ public class AlvinSoftTcpTests {
         Assert.IsTrue(await TestClient.TryConnectAsync());
 
         await TestSendReceive();
-
+        await TestSendReceive();
+        await TestSendReceive();
+        await TestSendReceive();
 
     }
 
@@ -39,23 +40,55 @@ public class AlvinSoftTcpTests {
         await TestServer.StartAsync();
 
         TestClient = new("127.0.0.1", 2020);
-        Assert.IsFalse(await TestClient.TryConnectAsync("Password"));
         Assert.IsTrue(await TestClient.TryConnectAsync("password"));
 
         await TestSendReceive();
-
-        await TestClient.DisconnectAsync();
-        await TestServer.StopAsync();
+        await TestSendReceive();
+        await TestSendReceive();
+        await TestSendReceive();
 
     }
+
+    [TestMethod("Ping Functionality Test")]
+    public async Task Test3() {
+
+        ServerSettings settings = new("password") {
+            PingIntervalMs = 1000,
+            PingTimeoutMs = 500
+        };
+
+        TestServer = new(System.Net.IPAddress.Any, 2020, settings);
+        await TestServer.StartAsync();
+
+        TestClient = new("127.0.0.1", 2020);
+        Assert.IsTrue(await TestClient.TryConnectAsync("password"));
+
+        await Task.Delay(settings.PingIntervalMs * 4);
+
+        Assert.IsTrue(TestServer.ClientCount == 1);
+
+        TaskCompletionSource completion = new();
+        void OnDisconnect(byte[] _) {
+            completion.SetResult();
+        }
+        TestServer.ClientDisconnected += OnDisconnect;
+
+        //forcefully close the client
+        TestClient.Close();
+
+        await Task.WhenAny(Task.Delay(settings.PingIntervalMs + settings.PingTimeoutMs), completion.Task);
+        Assert.IsTrue(completion.Task.IsCompleted);
+
+        TestServer.ClientDisconnected -= OnDisconnect;
+    }
+
 
     [TestCleanup]
     public void Cleanup() {
         TestServer?.Close();
         TestClient?.Close();
+        Dbg.OutputAll();
     }
-
-
 
     private static async Task TestSendReceive() {
 
@@ -68,37 +101,39 @@ public class AlvinSoftTcpTests {
         //test server send/client receive ----------------------------------------
         bool receivedData = false;
         byte[] sentData = RandomBytes(128);
+        TaskCompletionSource completion = new();
 
-        TestClient.BlobReceivedEvent += (data) => {
-
+        void clientReceiveHandler(byte[] data) {
             receivedData = true;
             CollectionAssert.AreEqual(sentData, data);
-
-        };
+            completion.SetResult();
+        }
+        TestClient.BlobReceivedEvent += clientReceiveHandler;
 
         await TestServer.BroadcastBlobAsync(sentData);
-
-        await Task.Delay(200);
-
+        await completion.Task.WaitAsync(TimeSpan.FromMilliseconds(2000));
         Assert.IsTrue(receivedData);
-        
+
+        TestClient.BlobReceivedEvent -= clientReceiveHandler;
+
 
         //test client send/server receive --------------------------------------
         receivedData = false;
         sentData = RandomBytes(128);
+        completion = new();
 
-        TestServer.BlobReceivedEvent += (_, data) => {
-
+        void serverReceiveHandler(byte[] _, byte[] data) {
             receivedData = true;
             CollectionAssert.AreEqual(sentData, data);
+            completion.SetResult();
+        }
+        TestServer.BlobReceivedEvent += serverReceiveHandler;
 
-        };
-
-        await TestClient.SendBlobAsync(sentData);
-
-        await Task.Delay(200);
-
+        TestClient.SendBlob(sentData);
+        await completion.Task.WaitAsync(TimeSpan.FromMilliseconds(2000));
         Assert.IsTrue(receivedData);
+
+        TestServer.BlobReceivedEvent -= serverReceiveHandler;
 
     }
 

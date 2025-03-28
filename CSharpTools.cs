@@ -3,6 +3,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Runtime.Intrinsics.X86;
 using System.Security.Cryptography;
+using System.Collections.Concurrent;
+using System.Diagnostics;
 
 internal class RepeatingAction : IDisposable {
 
@@ -310,4 +312,21 @@ internal static class RandomGen {
         Random.Shared.NextBytes(buffer);
         return buffer;
     }
+}
+
+public static class Dbg {
+
+    private static ConcurrentQueue<object?> DebugQueue = new();
+    public static void Log(object? obj) {
+        DebugQueue.Enqueue(obj);
+    }
+    public static void OutputAll() {
+        Debug.WriteLine($"Showing {DebugQueue.Count} debug objects: ----------------");
+        foreach (var obj in DebugQueue) {
+            Debug.WriteLine(obj);
+        }
+        DebugQueue.Clear();
+        Debug.WriteLine($"Debug end ------------------------------------------------");
+    }
+
 }
