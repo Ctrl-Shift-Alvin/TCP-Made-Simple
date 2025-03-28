@@ -314,12 +314,15 @@ internal static class RandomGen {
     }
 }
 
+#pragma warning disable
 public static class Dbg {
 
     private static ConcurrentQueue<object?> DebugQueue = new();
+    [Conditional("DEBUG")]
     public static void Log(object? obj) {
         DebugQueue.Enqueue(obj);
     }
+    [Conditional("DEBUG")]
     public static void OutputAll() {
         Debug.WriteLine($"Showing {DebugQueue.Count} debug objects: ----------------");
         foreach (var obj in DebugQueue) {
@@ -328,5 +331,5 @@ public static class Dbg {
         DebugQueue.Clear();
         Debug.WriteLine($"Debug end ------------------------------------------------");
     }
-
 }
+#pragma warning restore
