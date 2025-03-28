@@ -642,9 +642,10 @@ partial class TcpMsServer(IPAddress ip, ushort port, ServerSettings settings) {
 
     /// <summary>Tries to remove <paramref name="client"/> from <see cref="Clients"/>. Calls <see cref="OnClientDisconnected(byte[])"/> if necessary.</summary>
     private void RemoveClient(Client client) {
-        Dbg.Log($"TcpMsServer: Removing client with ID {client.ReadableID}");
-        if (Clients.TryRemove(client.ID, out _))
+        if (Clients.TryRemove(client.ID, out _)) {
             OnClientDisconnected(client.ID);
+            Dbg.Log($"TcpMsServer: Removed client with ID {client.ReadableID}");
+        }
     }
 
     private byte[] GenerateID(int length = 16) {
