@@ -71,7 +71,7 @@ public class AlvinSoftTcpTests {
         void OnDisconnect(byte[] _) {
             completion.SetResult();
         }
-        TestServer.ClientDisconnected += OnDisconnect;
+        TestServer.ClientDisconnectedEvent += OnDisconnect;
 
         //forcefully close the client
         TestClient.Close();
@@ -79,7 +79,7 @@ public class AlvinSoftTcpTests {
         await Task.WhenAny(Task.Delay(settings.PingIntervalMs + settings.PingTimeoutMs), completion.Task);
         Assert.IsTrue(completion.Task.IsCompleted);
 
-        TestServer.ClientDisconnected -= OnDisconnect;
+        TestServer.ClientDisconnectedEvent -= OnDisconnect;
     }
 
 

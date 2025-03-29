@@ -17,13 +17,13 @@ public partial class TcpMsServer {
 
     public delegate void ClientEvent(byte[] clientId);
 
-    public event ClientEvent ClientConnected;
-    public event ClientEvent ClientDisconnected;
-    public event ClientEvent ClientPanic;
+    public event ClientEvent ClientConnectedEvent;
+    public event ClientEvent ClientDisconnectedEvent;
+    public event ClientEvent ClientPanicEvent;
 
-    private void OnClientConnected(byte[] clientId) => ClientConnected?.Invoke(clientId);
-    private void OnClientDisconnected(byte[] clientId) => ClientDisconnected?.Invoke(clientId);
-    private void OnClientPanic(byte[] clientId) => ClientPanic?.Invoke(clientId);
+    private void OnClientConnected(byte[] clientId) => ClientConnectedEvent?.Invoke(clientId);
+    private void OnClientDisconnected(byte[] clientId) => ClientDisconnectedEvent?.Invoke(clientId);
+    private void OnClientPanic(byte[] clientId) => ClientPanicEvent?.Invoke(clientId);
 
     public delegate void BlobReceived(byte[] clientId, byte[] data);
     public event BlobReceived BlobReceivedEvent;

@@ -27,11 +27,11 @@ public partial class TcpMsClient(string hostname, ushort port) {
     /// <summary>
     /// Triggered when this client had an error and resolved it. Use it to resend potentially important data that was lost.
     /// </summary>
-    public event Panic OnPanicEvent;
+    public event Panic PanicEvent;
 
     private void OnConnected() => ConnectEvent?.Invoke();
     private void OnDisconnect() => DisconnectEvent?.Invoke();
-    private void OnPanic() => OnPanicEvent?.Invoke();
+    private void OnPanic() => PanicEvent?.Invoke();
 
 
     public delegate void BlobReceived(byte[] data);
