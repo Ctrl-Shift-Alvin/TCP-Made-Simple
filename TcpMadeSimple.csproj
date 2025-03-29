@@ -32,4 +32,7 @@
       <HintPath>ASEncryption\ASEncryptionTools.dll</HintPath>
     </Reference>
   </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Packages\" />
+  </ItemGroup>
 </Project>
