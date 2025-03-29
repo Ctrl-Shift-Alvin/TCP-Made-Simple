@@ -7,8 +7,10 @@ namespace AlvinSoft.TcpMsTest;
 [TestClass]
 public class AlvinSoftTcpTests {
 
-    public static TcpMsServer TestServer;
-    public static TcpMsClient TestClient;
+#pragma warning disable CS8618
+    private static TcpMsServer TestServer;
+    private static TcpMsClient TestClient;
+#pragma warning restore CS8618
 
     [TestMethod("Server/Client Test No Encryption No Ping")]
     public async Task Test1() {
