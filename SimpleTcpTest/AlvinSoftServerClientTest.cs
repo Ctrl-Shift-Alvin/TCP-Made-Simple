@@ -98,26 +98,48 @@ public class AlvinSoftTcpTests {
             return buffer;
         }
 
-        //test server send/client receive ----------------------------------------
+        #region Test_Server_Send
+        //blob test
         bool receivedData = false;
         byte[] sentData = RandomBytes(128);
         TaskCompletionSource completion = new();
 
-        void clientReceiveHandler(byte[] data) {
+        void clientReceiveBlobHandler(byte[] data) {
             receivedData = true;
             CollectionAssert.AreEqual(sentData, data);
             completion.SetResult();
         }
-        TestClient.BlobReceivedEvent += clientReceiveHandler;
+        TestClient.BlobReceivedEvent += clientReceiveBlobHandler;
 
         await TestServer.BroadcastBlobAsync(sentData);
         await completion.Task.WaitAsync(TimeSpan.FromMilliseconds(2000));
         Assert.IsTrue(receivedData);
 
-        TestClient.BlobReceivedEvent -= clientReceiveHandler;
+        TestClient.BlobReceivedEvent -= clientReceiveBlobHandler;
 
+        //string test
+        receivedData = false;
+        sentData = RandomBytes(128);
+        string sentString = Convert.ToBase64String(sentData);
+        completion = new();
 
-        //test client send/server receive --------------------------------------
+        void clientReceiveStringHandler(string data) {
+            receivedData = true;
+            Assert.AreEqual(sentString, data);
+            completion.SetResult();
+        }
+        TestClient.StringReceivedEvent += clientReceiveStringHandler;
+
+        await TestServer.BroadcastStringAsync(sentString);
+        await completion.Task.WaitAsync(TimeSpan.FromMilliseconds(2000));
+        Assert.IsTrue(receivedData);
+
+        TestClient.StringReceivedEvent -= clientReceiveStringHandler;
+
+        #endregion
+
+        #region Test_Client_Send
+        //blob test
         receivedData = false;
         sentData = RandomBytes(128);
         completion = new();
@@ -135,6 +157,26 @@ public class AlvinSoftTcpTests {
 
         TestServer.BlobReceivedEvent -= serverReceiveHandler;
 
+        //string test
+        receivedData = false;
+        sentData = RandomBytes(128);
+        sentString = Convert.ToBase64String(sentData);
+        completion = new();
+
+        void serverReceiveStringHandler(byte[] clientId, string data) {
+            receivedData = true;
+            Assert.AreEqual(sentString, data);
+            completion.SetResult();
+        }
+        TestServer.StringReceivedEvent += serverReceiveStringHandler;
+
+        await TestClient.SendStringAsync(sentString);
+        await completion.Task.WaitAsync(TimeSpan.FromMilliseconds(2000));
+        Assert.IsTrue(receivedData);
+
+        TestServer.StringReceivedEvent -= serverReceiveStringHandler;
+
+        #endregion
     }
 
 }
