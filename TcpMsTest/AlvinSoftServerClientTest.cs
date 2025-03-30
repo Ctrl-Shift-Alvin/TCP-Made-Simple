@@ -1,6 +1,7 @@
-using Microsoft.VisualStudio.TestTools.UnitTesting;
 using AlvinSoft.TcpMs;
 using AlvinSoft.TcpMs.Packages;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System.Net;
 
 namespace AlvinSoft.TcpMsTest;
 
@@ -20,7 +21,7 @@ public class AlvinSoftTcpTests {
             PingIntervalMs = 0
         };
 
-        TestServer = new(System.Net.IPAddress.Any, 19910, settings);
+        TestServer = new(IPAddress.Any, 19910, settings);
         await TestServer.StartAsync();
 
         TestClient = new("127.0.0.1", 19910);
@@ -38,7 +39,7 @@ public class AlvinSoftTcpTests {
 
         ServerSettings settings = new("password");
 
-        TestServer = new(System.Net.IPAddress.Any, 19911, settings);
+        TestServer = new(IPAddress.Any, 19911, settings);
         await TestServer.StartAsync();
 
         TestClient = new("127.0.0.1", 19911);
@@ -59,7 +60,7 @@ public class AlvinSoftTcpTests {
             PingTimeoutMs = 500
         };
 
-        TestServer = new(System.Net.IPAddress.Any, 19912, settings);
+        TestServer = new(IPAddress.Any, 19912, settings);
         await TestServer.StartAsync();
 
         TestClient = new("127.0.0.1", 19912);
@@ -84,6 +85,66 @@ public class AlvinSoftTcpTests {
         TestServer.ClientDisconnectedEvent -= OnDisconnect;
     }
 
+    [TestMethod("Client Disconnect Test")]
+    public async Task Test4() {
+
+        ServerSettings settings = new(null) {
+            EncryptionEnabled = false,
+            PingIntervalMs = 0
+        };
+
+        TestServer = new(IPAddress.Any, 19913, settings);
+        await TestServer.StartAsync();
+
+        TestClient = new("127.0.0.1", 19913);
+        Assert.IsTrue(await TestClient.TryConnectAsync());
+
+        TaskCompletionSource completion = new();
+        void OnDisconnect(byte[] _) {
+            completion.SetResult();
+        }
+
+        TestServer.ClientDisconnectedEvent += OnDisconnect;
+
+        await TestClient.DisconnectAsync();
+        await completion.Task;
+
+        TestServer.ClientDisconnectedEvent -= OnDisconnect;
+        Assert.IsTrue(TestServer.ClientCount == 0);
+  
+    }
+
+    [TestMethod("Server Broadcast Test")]
+    public async Task Test5() {
+
+        ServerSettings settings = new(null) {
+            EncryptionEnabled = false,
+            PingIntervalMs = 0
+        };
+
+        TestServer = new(IPAddress.Any, 19914, settings);
+        await TestServer.StartAsync();
+
+        TestClient = new("127.0.0.1", 19914);
+        Assert.IsTrue(await TestClient.TryConnectAsync());
+
+        bool receivedData = false;
+        byte[] sentData = RandomBytes(128);
+        TaskCompletionSource completion = new();
+
+        void clientReceiveBlobHandler(byte[] data) {
+            receivedData = true;
+            CollectionAssert.AreEqual(sentData, data);
+            completion.SetResult();
+        }
+        TestClient.BlobReceivedEvent += clientReceiveBlobHandler;
+
+        await TestServer.BroadcastBlobAsync(sentData);
+        await completion.Task.WaitAsync(TimeSpan.FromMilliseconds(2000));
+        Assert.IsTrue(receivedData);
+
+        TestClient.BlobReceivedEvent -= clientReceiveBlobHandler;
+    }
 
     [TestCleanup]
     public void Cleanup() {
@@ -93,12 +154,6 @@ public class AlvinSoftTcpTests {
     }
 
     private static async Task TestSendReceive() {
-
-        static byte[] RandomBytes(int length) {
-            byte[] buffer = new byte[length];
-            Random.Shared.NextBytes(buffer);
-            return buffer;
-        }
 
         #region Test_Server_Send
         //blob test
@@ -181,4 +236,9 @@ public class AlvinSoftTcpTests {
         #endregion
     }
 
+    static byte[] RandomBytes(int length) {
+        byte[] buffer = new byte[length];
+        Random.Shared.NextBytes(buffer);
+        return buffer;
+    }
 }
