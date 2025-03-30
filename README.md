@@ -1,4 +1,6 @@
-# TCP Made Simple (TcpMs)
+# TCP Made Simple (TcpMs) for Unity
+
+*This branch is ideally functionally identical to master, but can vary in implementation minimally, since it uses .NET standard 2.1. I created it to be used in Unity projects. It's also probably a bit slower.*
 
 I made this library, since I couldn't seem to find one that suited my needs.
 These are the key points:
