@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Runtime.Intrinsics.X86;
 using System.Security.Cryptography;
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -147,15 +146,9 @@ internal class SemaphoreSlimUsing : SemaphoreSlim, IDisposable {
 /// <summary>Class used to count 1 bits in byte sequences</summary>
 internal static class BitCounter {
 
-    readonly static bool canUsePopCnt;
-    readonly static bool canUsePopCntX64;
-
     private static readonly byte[] byteTable = new byte[256];
 
     static BitCounter() {
-
-        canUsePopCnt = Popcnt.IsSupported;
-        canUsePopCntX64 = Popcnt.X64.IsSupported;
 
         for (int i = 0; i < 256; i++) {
 
@@ -173,78 +166,12 @@ internal static class BitCounter {
 
     /// <summary>Counts the one bit in the <paramref name="bytes"/> array, preferring the PopCnt operation. Otherwise uses a lookup table.</summary>
     /// <returns>The amount of one bits inside <paramref name="bytes"/></returns>
-    public static ulong CountOneBits(byte[] bytes) => canUsePopCnt ? PopCntCount(bytes) : LookupCount(bytes);
-
-    /// <summary>Uses PopCnt operation to count the 1 bits in the <paramref name="bytes"/> array and uses the x64 instruction if possible. Otherwise calls <see cref="LookupCount(byte[])"/>.</summary>
-    /// <remarks>Contains unsafe code.</remarks>
-    public static ulong PopCntCount(byte[] bytes) {
-
-        int length = bytes.Length;
-        ulong bitCount = 0;
-        int i = 0;
-
-        unsafe {
-            fixed (byte* pBytes = bytes) {
-
-                byte* pData = pBytes;
-
-                //take advantage of x64
-                if (canUsePopCntX64) {
-
-                    //it's faster to cast the bytes to ulongs to reduce instruction call count
-                    for (; i <= length - sizeof(ulong); i += sizeof(ulong)) {
-                        ulong value = *(ulong*)pData;
-                        bitCount += Popcnt.X64.PopCount(value);
-                        pData += sizeof(ulong);
-                    }
-
-                    //cast remaining bytes to uints
-                    for (; i <= length - sizeof(uint); i += sizeof(uint)) {
-                        uint value = *(uint*)pData;
-                        bitCount += Popcnt.PopCount(value);
-                        pData += sizeof(ulong);
-                    }
-
-                    //process remaining bytes
-                    for (; i < length; i++) {
-                        bitCount += Popcnt.PopCount(*pData);
-                        pData++;
-                    }
-
-                } else if (canUsePopCnt) {
-
-                    //cast to uints
-                    for (; i <= length - sizeof(uint); i += sizeof(uint)) {
-                        uint value = *(uint*)pData;
-                        bitCount += Popcnt.PopCount(value);
-                        pData += sizeof(ulong);
-                    }
-
-                    //process remaining bytes
-                    for (; i < length; i++) {
-                        bitCount += Popcnt.PopCount(*pData);
-                        pData++;
-                    }
-
-                } else {
-                    return LookupCount(bytes);
-                }
-
-            }//fixed
-        }//unsafe
-
-        return bitCount;
-    }
-
-    /// <summary>Uses a precomputed lookup table to count the one bits in the <paramref name="bytes"/> array</summary>
-    public static ulong LookupCount(byte[] bytes) {
-
+    public static ulong CountOneBits(byte[] bytes) {
         ulong bitCount = 0;
         foreach (byte b in bytes)
             bitCount += byteTable[b];
 
         return bitCount;
-
     }
 
 }
@@ -258,7 +185,8 @@ internal static class BitTools {
     /// <exception cref="ArgumentNullException">The bit array is null</exception>
     public static byte GetByte(bool[] bits) {
 
-        ArgumentNullException.ThrowIfNull(bits);
+        if (bits == null)
+            throw new ArgumentNullException(nameof(bits), "The bit array cannot be null.");
 
         if (bits.Length > 8)
             throw new ArgumentException("The bit array must be 8 bits or less.", nameof(bits));
@@ -287,37 +215,27 @@ internal static class BitTools {
 
 }
 
-internal static class HashTools {
-
-    /// <summary>Uses SHA256 to compute a hash and returns the first 4 and last 4 bytes of the hash, both from left to right.</summary>
-    /// <param name="data">The bytes used to calculate the hash</param>
-    /// <returns>The truncated 8-byte long hash</returns>
-    public static long Compute8ByteHash(byte[] data) {
-
-        byte[] hash = SHA256.HashData(data);
-        byte[] truncHash = new byte[8];
-
-        Array.Copy(hash, truncHash, 4);
-        Array.Copy(hash, 28, truncHash, 4, 4);
-
-        return BitConverter.ToInt64(truncHash);
-
-    }
-
-}
-
-internal static class RandomGen {
+/// <summary>
+/// Shared, thread-safe <see cref="Random"/> instance.
+/// </summary>
+internal static class Rdm {
+    public static Random Shared = new Random();
     public static byte[] GetBytes(int length) {
         byte[] buffer = new byte[length];
-        Random.Shared.NextBytes(buffer);
+        lock (Shared)
+            Shared.NextBytes(buffer);
         return buffer;
+    }
+    public static int Next(int min, int max) {
+        lock (Shared)
+            return Shared.Next(min, max);
     }
 }
 
 #pragma warning disable
 public static class Dbg {
 
-    private static ConcurrentQueue<object?> DebugQueue = new();
+    private static ConcurrentQueue<object?> DebugQueue = new ConcurrentQueue<object?>();
     [Conditional("DEBUG")]
     public static void Log(object? obj) {
         DebugQueue.Enqueue(obj);

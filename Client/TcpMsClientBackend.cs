@@ -18,7 +18,7 @@ namespace AlvinSoft.TcpMs {
         public string Hostname { get; }
         /// <summary>The port used to connect to the server.</summary>
         public ushort Port { get; }
-        internal Client ClientInstance { get; set; }
+        private Client ClientInstance { get; set; }
 
         /// <summary>The server's settings used to communicate.</summary>
         public ServerSettings Settings { get; internal set; } = ServerSettings.None;
@@ -30,16 +30,20 @@ namespace AlvinSoft.TcpMs {
 #if DEBUG
             20000
 #else
-        2000
+            2000
 #endif
-            ).Token;
+        ).Token;
 
         #endregion
 
-        internal class Client(TcpMsClient tcpMsClient, TcpClient tcpClient) : PackageHandler(tcpClient.GetStream()) {
+        private class Client : PackageHandler {
 
-            private TcpMsClient TcpMsClientInstance { get; } = tcpMsClient;
-            private TcpClient TcpClientInstance { get; } = tcpClient;
+            public Client(TcpMsClient tcpMsClient, TcpClient tcpClient) : base(tcpClient.GetStream()) {
+                TcpMsClientInstance = tcpMsClient;
+                TcpClientInstance = tcpClient;
+            }
+            private TcpMsClient TcpMsClientInstance { get; }
+            private TcpClient TcpClientInstance { get; }
 
             private ServerSettings Settings => TcpMsClientInstance.Settings;
 
@@ -214,9 +218,12 @@ namespace AlvinSoft.TcpMs {
                     Package ivIn = await ObtainExpectedPackageAsync(Package.PackageTypes.Auth_IV);
                     Package encryptedChallengeIn = await ObtainExpectedPackageAsync(Package.PackageTypes.Auth_Challenge);
 
-                    encryptionIn = new(Settings.Password, saltIn.Data, ivIn.Data);
+                    encryptionIn = new AesEncryption(Settings.Password, saltIn.Data, ivIn.Data);
                     byte[] challengeIn = encryptionIn.DecryptBytes(encryptedChallengeIn.Data);
-                    byte[] challengeInHash = SHA512.HashData(challengeIn);
+                    byte[] challengeInHash;
+                    using (SHA512 sha = SHA512.Create()) {
+                        challengeInHash = sha.ComputeHash(challengeIn);
+                    }
 
                     await DispatchPackageAsync(new Package(Package.PackageTypes.Auth_Response, Package.DataTypes.Blob, challengeInHash));
 
@@ -225,12 +232,15 @@ namespace AlvinSoft.TcpMs {
                         return false;
 
                     //SERVER CHALLENGE ---------------------
-                    AesEncryption encryptionOut = new() {
+                    AesEncryption encryptionOut = new AesEncryption() {
                         Password = Settings.Password
                     };
-                    byte[] challengeOut = RandomGen.GetBytes(32);
+                    byte[] challengeOut = Rdm.GetBytes(32);
                     byte[] encryptedChallengeOut = encryptionOut.EncryptBytes(challengeOut);
-                    byte[] challengeOutHash = SHA512.HashData(challengeOut);
+                    byte[] challengeOutHash;
+                    using (SHA512 sha = SHA512.Create()) {
+                        challengeOutHash = sha.ComputeHash(challengeOut);
+                    }
 
                     await DispatchPackageAsync(new Package(Package.PackageTypes.Auth_Salt, Package.DataTypes.Blob, encryptionOut.Salt));
                     await DispatchPackageAsync(new Package(Package.PackageTypes.Auth_IV, Package.DataTypes.Blob, encryptionOut.IV));
@@ -272,7 +282,7 @@ namespace AlvinSoft.TcpMs {
                     Package iv = await ObtainExpectedPackageAsync(Package.PackageTypes.EncrIV);
                     Package salt = await ObtainExpectedPackageAsync(Package.PackageTypes.EncrSalt);
 
-                    TcpMsClientInstance.Encryption = new(Settings.Password, salt.Data, iv.Data);
+                    TcpMsClientInstance.Encryption = new AesEncryption(Settings.Password, salt.Data, iv.Data);
 
                     return OperationResult.Succeeded;
 
@@ -314,8 +324,8 @@ namespace AlvinSoft.TcpMs {
                             data = packageBuffer.Data;
 
                         //create response (random bytes with length of test package)
-                        byte[] response = RandomGen.GetBytes(data.Length);
-                        response[Random.Shared.Next(0, response.Length)] = data[Random.Shared.Next(0, data.Length)]; //assign random byte from data to random byte in response
+                        byte[] response = Rdm.GetBytes(data.Length);
+                        response[Rdm.Next(0, response.Length)] = data[Rdm.Next(0, data.Length)]; //assign random byte from data to random byte in response
 
                         //encrypt if necessary
                         if (Settings.EncryptionEnabled)
@@ -327,7 +337,7 @@ namespace AlvinSoft.TcpMs {
                         await DispatchPackageAsync(new Package(Package.PackageTypes.Test, Package.DataTypes.Blob, data, false));
 
                         //read result
-                        packageBuffer = await ObtainExpectedPackageAsync([Package.PackageTypes.TestTrySuccess, Package.PackageTypes.TestTryFailure]);
+                        packageBuffer = await ObtainExpectedPackageAsync(new Package.PackageTypes[] { Package.PackageTypes.TestTrySuccess, Package.PackageTypes.TestTryFailure });
 
                         if (packageBuffer.PackageType == Package.PackageTypes.TestTryFailure)
                             return OperationResult.Failed;
@@ -374,21 +384,21 @@ namespace AlvinSoft.TcpMs {
                 if (await Manual_Authenticate() == false)
                     return false;
 
-                Dbg.Log($"TcpMsClient.Client: authenticated");
+                Dbg.Log($"TcpMsClient.Client: Authenticated");
 
                 if (Settings.EncryptionEnabled) {
 
                     if (await Manual_ReceiveEncryption() != OperationResult.Succeeded)
                         return false;
 
-                    Dbg.Log($"TcpMsClient.Client: received encryption");
+                    Dbg.Log($"TcpMsClient.Client: Received encryption");
                 }
 
                 _ = await ObtainExpectedPackageAsync(Package.PackageTypes.TestRequest);
                 if (await Manual_ValidateConnection() != OperationResult.Succeeded)
                     return false;
 
-                Dbg.Log($"TcpMsClient.Client: validated connection");
+                Dbg.Log($"TcpMsClient.Client: Validated connection");
 
                 return true;
 

@@ -49,10 +49,11 @@ namespace AlvinSoft.TcpMs {
 #pragma warning restore CS1591
         #endregion
 
+        #region Start/Stop
         /// <summary>Try to connect to the server and authenticate.</summary>
         /// <remarks>Leave <paramref name="password"/> set to <see langword="null"/> if the server doesn't use authentication/encryption.</remarks>
         /// <returns>A task that returns true if the connection (and authentication) succeeded; otherwise false.</returns>
-        public async Task<bool> TryConnectAsync(string password = null, CancellationToken cancellationToken = default) {
+        public async Task<bool> TryConnectAsync(string password = null) {
 
             Settings = ServerSettings.None;
             if (password != null)
@@ -61,37 +62,34 @@ namespace AlvinSoft.TcpMs {
             TcpClient tcp = new TcpClient();
             try {
 
-                await tcp.ConnectAsync(Hostname, port, cancellationToken);
+                await tcp.ConnectAsync(Hostname, Port);
 
-            } catch (OperationCanceledException) {
+                if (!tcp.Connected)
+                    throw new Exception();
 
-                Dbg.Log($"TcpMsClient: timed out connecting to server");
-                return false;
+                Dbg.Log($"TcpMsClient: Connected to server");
 
             } catch {
 
-                Dbg.Log($"TcpMsClient: could not connect to server");
+                Dbg.Log($"TcpMsClient: Could not connect to server");
                 return false;
-
             }
 
-            Dbg.Log($"TcpMsClient: connected to server");
-
-            ClientInstance = new(this, tcp);
+            ClientInstance = new Client(this, tcp);
 
             if (await ClientInstance.Manual_JoinClient()) {
 
-                Dbg.Log($"TcpMsClient: joined server");
+                Dbg.Log($"TcpMsClient: Joined server");
 
                 ClientInstance.StartAll();
 
-                Dbg.Log($"TcpMsClient: started obtain/dispatch threads");
+                Dbg.Log($"TcpMsClient: Started client handler");
 
                 return true;
 
             } else {
 
-                Dbg.Log($"TcpMsClient: could not join server");
+                Dbg.Log($"TcpMsClient: Could not join server");
                 Close();
                 return false;
 
@@ -116,6 +114,7 @@ namespace AlvinSoft.TcpMs {
             ClientInstance?.Close();
             Encryption?.Dispose();
         }
+        #endregion
 
         #region Send_Methods
 
@@ -123,7 +122,7 @@ namespace AlvinSoft.TcpMs {
         /// <returns>A task that finishes when the data was sent</returns>
         public void SendByte(byte data) {
 
-            byte[] bytes = [data];
+            byte[] bytes = { data };
             EncryptIfNeccessary(ref bytes);
             ClientInstance.Send(new Package(Package.PackageTypes.Data, Package.DataTypes.Byte, bytes, false));
 
@@ -150,7 +149,7 @@ namespace AlvinSoft.TcpMs {
         /// <returns>A task that finishes when the data was sent</returns>
         public async Task SendByteAsync(byte data) {
 
-            byte[] bytes = [data];
+            byte[] bytes = { data };
             EncryptIfNeccessary(ref bytes);
             await ClientInstance.SendAsync(new Package(Package.PackageTypes.Data, Package.DataTypes.Byte, bytes, false, useTask: true));
 
@@ -178,7 +177,7 @@ namespace AlvinSoft.TcpMs {
         /// <returns>A task that finishes when the data was sent</returns>
         public async Task SendByteAsync(byte data, CancellationToken cancellationToken) {
 
-            byte[] bytes = [data];
+            byte[] bytes = { data };
             EncryptIfNeccessary(ref bytes);
             await ClientInstance.SendAsync(new Package(Package.PackageTypes.Data, Package.DataTypes.Byte, bytes, false, useTask: true), cancellationToken);
 
