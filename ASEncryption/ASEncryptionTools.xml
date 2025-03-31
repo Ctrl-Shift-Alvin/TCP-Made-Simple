@@ -4,97 +4,6 @@
         <name>ASEncryptionTools</name>
     </assembly>
     <members>
-        <member name="T:AlvinSoft.Cryptography.SecurePassword">
-            <summary>Represents a password securely stored in memory.</summary>
-        </member>
-        <member name="P:AlvinSoft.Cryptography.SecurePassword.SecureString">
-            <summary>The <see cref="T:System.Security.SecureString"/> instance that is storing the password.</summary>
-        </member>
-        <member name="P:AlvinSoft.Cryptography.SecurePassword.Length">
-            <summary>The character password's length.</summary>
-        </member>
-        <member name="P:AlvinSoft.Cryptography.SecurePassword.IsEmpty">
-            <summary>Shorthand for <c>Length == 0</c>.</summary>
-        </member>
-        <member name="P:AlvinSoft.Cryptography.SecurePassword.PasswordUnicodeBytes">
-            <summary>Returns the unicode bytes of the password. Shorthand for <c>Encoding.Unicode.GetBytes(PasswordChars)</c>.</summary>
-        </member>
-        <member name="M:AlvinSoft.Cryptography.SecurePassword.AppendChar(System.Char)">
-            <summary>Append <paramref name="c"/> to this password.</summary>
-        </member>
-        <member name="M:AlvinSoft.Cryptography.SecurePassword.AppendString(System.String)">
-            <summary>Append <paramref name="s"/> to this password.</summary>
-        </member>
-        <member name="M:AlvinSoft.Cryptography.SecurePassword.#ctor">
-            <summary>Creates an empty instance.</summary>
-        </member>
-        <member name="M:AlvinSoft.Cryptography.SecurePassword.#ctor(System.String)">
-            <summary>Create a new instance and copy the <paramref name="password"/> chars to <see cref="P:AlvinSoft.Cryptography.SecurePassword.SecureString"/>.</summary>
-        </member>
-        <member name="M:AlvinSoft.Cryptography.SecurePassword.#ctor(System.Security.SecureString)">
-            <summary>Create a new instance and assign <paramref name="password"/> to <see cref="P:AlvinSoft.Cryptography.SecurePassword.SecureString"/>.</summary>
-        </member>
-        <member name="M:AlvinSoft.Cryptography.SecurePassword.ToString">
-            <summary>Copy the <see cref="P:AlvinSoft.Cryptography.SecurePassword.SecureString"/> character bytes to a string.</summary>
-            <returns>The string containing the <see cref="P:AlvinSoft.Cryptography.SecurePassword.SecureString"/> chars</returns>
-        </member>
-        <member name="M:AlvinSoft.Cryptography.SecurePassword.Equals(System.Object)">
-            <summary>
-            Check if the underlying unicode chars of this instance and <paramref name="obj"/> are identical.
-            </summary>
-            <remarks><paramref name="obj"/> can be a <see cref="T:AlvinSoft.Cryptography.SecurePassword"/>, <see cref="P:AlvinSoft.Cryptography.SecurePassword.SecureString"/>, <see cref="T:System.String"/> or <see cref="T:System.Char"/>[] instance.</remarks>
-            <param name="obj"></param>
-            <returns>true if <paramref name="obj"/> is a text type and the char bytes are identical.</returns>
-        </member>
-        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Equality(AlvinSoft.Cryptography.SecurePassword,AlvinSoft.Cryptography.SecurePassword)">
-            <returns>true if both sides contain the same unicode bytes; otherwise false.</returns>
-        </member>
-        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Inequality(AlvinSoft.Cryptography.SecurePassword,AlvinSoft.Cryptography.SecurePassword)">
-            <returns>false if both sides contain the same unicode bytes; otherwise true.</returns>
-        </member>
-        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Equality(AlvinSoft.Cryptography.SecurePassword,System.String)">
-            <returns>true if both sides contain the same unicode bytes; otherwise false.</returns>
-        </member>
-        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Inequality(AlvinSoft.Cryptography.SecurePassword,System.String)">
-            <returns>false if both sides contain the same unicode bytes; otherwise true.</returns>
-        </member>
-        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Equality(System.String,AlvinSoft.Cryptography.SecurePassword)">
-            <returns>true if both sides contain the same unicode bytes; otherwise false.</returns>
-        </member>
-        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Inequality(System.String,AlvinSoft.Cryptography.SecurePassword)">
-            <returns>false if both sides contain the same unicode bytes; otherwise true.</returns>
-        </member>
-        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Equality(System.Security.SecureString,AlvinSoft.Cryptography.SecurePassword)">
-            <returns>true if both sides contain the same unicode bytes; otherwise false.</returns>
-        </member>
-        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Inequality(System.Security.SecureString,AlvinSoft.Cryptography.SecurePassword)">
-            <returns>false if both sides contain the same unicode bytes; otherwise true.</returns>
-        </member>
-        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Equality(AlvinSoft.Cryptography.SecurePassword,System.Security.SecureString)">
-            <returns>true if both sides contain the same unicode bytes; otherwise false.</returns>
-        </member>
-        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Inequality(AlvinSoft.Cryptography.SecurePassword,System.Security.SecureString)">
-            <returns>false if both sides contain the same unicode bytes; otherwise true.</returns>
-        </member>
-        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Equality(System.Char[],AlvinSoft.Cryptography.SecurePassword)">
-            <returns>true if both sides contain the same unicode bytes; otherwise false.</returns>
-        </member>
-        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Inequality(System.Char[],AlvinSoft.Cryptography.SecurePassword)">
-            <returns>false if both sides contain the same unicode bytes; otherwise true.</returns>
-        </member>
-        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Equality(AlvinSoft.Cryptography.SecurePassword,System.Char[])">
-            <returns>true if both sides contain the same unicode bytes; otherwise false.</returns>
-        </member>
-        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Inequality(AlvinSoft.Cryptography.SecurePassword,System.Char[])">
-            <returns>false if both sides contain the same unicode bytes; otherwise true.</returns>
-        </member>
-        <member name="M:AlvinSoft.Cryptography.SecurePassword.Dispose">
-            <summary>Disposes of this instance</summary>
-        </member>
-        <member name="M:AlvinSoft.Cryptography.SecurePassword.GetHashCode">
-            <summary>Serves as the default hash function.</summary>
-            <returns>A hash code for the current object.</returns>
-        </member>
         <member name="T:AlvinSoft.Cryptography.AesEncryption">
             <summary>Represents the Key and IV of an Aes encryption. Optionally holds a password and a salt to derive the key from.</summary>
         </member>
@@ -160,29 +69,29 @@
             <returns>The encrypted bytes. If the encryption fails, <c>null</c>.</returns>
         </member>
         <member name="M:AlvinSoft.Cryptography.AesEncryption.EncryptToBase64(System.String)">
-            <summary>Encrypts a string using the instance's cryptographic info</summary>
-            <returns>The encrypted string bytes as a Base64 string</returns>
+            <summary>Encrypts a string using the instance's cryptographic info.</summary>
+            <returns>The encrypted string bytes as a Base64 string.</returns>
         </member>
         <member name="M:AlvinSoft.Cryptography.AesEncryption.DecryptBase64(System.String)">
-            <summary>Decrypts Base64 string bytes using the instance's cryptographic info</summary>
+            <summary>Decrypts Base64 string bytes using the instance's cryptographic info.</summary>
         </member>
         <member name="M:AlvinSoft.Cryptography.AesEncryption.DecryptString(System.Byte[])">
-            <summary>Decrypts encrypted unicode bytes using this instance's cryptographic info</summary>
+            <summary>Decrypts encrypted unicode bytes using this instance's cryptographic info.</summary>
             <returns>The decrypted bytes. If the decryption fails, <c>null</c>.</returns>
         </member>
         <member name="M:AlvinSoft.Cryptography.AesEncryption.DecryptBytes(System.Byte[])">
-            <summary>Decrypts encrypted bytes using this instance's cryptographic info</summary>
+            <summary>Decrypts encrypted bytes using this instance's cryptographic info.</summary>
             <returns>The decrypted bytes. If the decryption fails, <c>null</c>.</returns>
         </member>
         <member name="M:AlvinSoft.Cryptography.AesEncryption.GetEncryptor(System.IO.Stream)">
             <summary>Create a write-mode encryptor stream using this instance's cryptographic info.</summary>
-            <param name="target">The target stream that the CryptoStream writes to</param>\
+            <param name="target">The target stream that the CryptoStream writes to.</param>
             <remarks>Make sure to call <c>Dispose()</c> when no longer needed. CryptoStream then also disposes of the target stream (in .NET 8 at least).</remarks>
             <exception cref="T:System.ArgumentNullException"/>
         </member>
         <member name="M:AlvinSoft.Cryptography.AesEncryption.GetDecryptor(System.IO.Stream)">
             <summary>Create a read-mode encryptor stream using the instance's cryptographic info.</summary>
-            <param name="target">The target stream that the CryptoStream writes to</param>
+            <param name="target">The target stream that the CryptoStream writes to.</param>
             <remarks>Make sure to call <c>Dispose()</c> when no longer needed. CryptoStream then also disposes of the target stream (in .NET 8 at least).</remarks>
             <exception cref="T:System.ArgumentNullException"/>
         </member>
@@ -217,33 +126,33 @@
         <member name="M:AlvinSoft.Cryptography.RSAEncryption.#ctor(AlvinSoft.Cryptography.RSAKey)">
             <summary>Abstracts <see cref="T:System.Security.Cryptography.RSA"/> and provides simple methods for importing/exporting public/private keys, and encrypting/decrypting.</summary>
         </member>
-        <member name="P:AlvinSoft.Cryptography.RSAEncryption.RSAKeySize">
-            <summary>The key size in bits used to initialize the <see cref="T:System.Security.Cryptography.RSACryptoServiceProvider"/></summary>
-        </member>
-        <member name="F:AlvinSoft.Cryptography.RSAEncryption.Key">
-            <summary>The RSA encryption parameters</summary>
-        </member>
         <member name="M:AlvinSoft.Cryptography.RSAEncryption.#ctor">
-            <summary>Create a new RSA instance and generate a key</summary>
+            <summary>Create a new RSA instance and generate a key.</summary>
+        </member>
+        <member name="P:AlvinSoft.Cryptography.RSAEncryption.RSAKeySize">
+            <summary>The key size in bits used to initialize the <see cref="T:System.Security.Cryptography.RSACryptoServiceProvider"/>.</summary>
+        </member>
+        <member name="P:AlvinSoft.Cryptography.RSAEncryption.Key">
+            <summary>The RSA encryption parameters.</summary>
         </member>
         <member name="M:AlvinSoft.Cryptography.RSAEncryption.#ctor(System.Security.Cryptography.RSAParameters)">
-            <summary>Create a new RSA instance and import <paramref name="parameters"/></summary>
+            <summary>Create a new RSA instance and import <paramref name="parameters"/>.</summary>
         </member>
         <member name="M:AlvinSoft.Cryptography.RSAEncryption.EncryptBytes(System.Byte[])">
-            <summary>Encrypt <paramref name="data"/> using this instance's public key</summary>
+            <summary>Encrypt <paramref name="data"/> using this instance's public key.</summary>
             <returns>The encrypted bytes. If anything fails, <c>null</c>.</returns>
         </member>
         <member name="M:AlvinSoft.Cryptography.RSAEncryption.DecryptBytes(System.Byte[])">
-            <summary>Decrypt <paramref name="data"/> using this instance's private key</summary>
+            <summary>Decrypt <paramref name="data"/> using this instance's private key.</summary>
             <returns>The encrypted bytes. If anything fails, <c>null</c>.</returns>
             <exception cref="T:System.Security.Cryptography.CryptographicException"/>
         </member>
         <member name="M:AlvinSoft.Cryptography.RSAEncryption.EncryptString(System.String)">
-            <summary>Encrypt unicode string <paramref name="data"/> using this instance's public key</summary>
+            <summary>Encrypt unicode string <paramref name="data"/> using this instance's public key.</summary>
             <returns>The encrypted bytes. If anything fails, <c>null</c>.</returns>
         </member>
         <member name="M:AlvinSoft.Cryptography.RSAEncryption.DecryptString(System.Byte[])">
-            <summary>Decrypt encrypted unicode string bytes <paramref name="encryptedData"/> using this instance's private key</summary>
+            <summary>Decrypt encrypted unicode string bytes <paramref name="encryptedData"/> using this instance's private key.</summary>
             <returns>The encrypted bytes. If anything fails, <c>null</c>.</returns>
             <exception cref="T:System.Security.Cryptography.CryptographicException"/>
         </member>
@@ -251,7 +160,7 @@
             <summary>Represents an RSA key, with or without the private key.</summary>
         </member>
         <member name="P:AlvinSoft.Cryptography.RSAKey.Key">
-            <summary>The used RSA key</summary>
+            <summary>The used RSA key.</summary>
         </member>
         <member name="P:AlvinSoft.Cryptography.RSAKey.HasPrivateKey">
             <summary>true if <see cref="P:AlvinSoft.Cryptography.RSAKey.Key"/> contains a private key; otherwise false.</summary>
@@ -267,19 +176,19 @@
         </member>
         <member name="M:AlvinSoft.Cryptography.RSAKey.#ctor">
             <summary>
-            Create an instance with a generated key
+            Create an instance with a generated key.
             </summary>
         </member>
         <member name="M:AlvinSoft.Cryptography.RSAKey.#ctor(System.Security.Cryptography.RSAParameters)">
             <summary>
-            Create an instance that holds an RSA key with import/export functionality
+            Create an instance that holds an RSA key with import/export functionality.
             </summary>
-            <param name="parameters">The parameters used export the key from</param>
+            <param name="parameters">The parameters used export the key from.</param>
             <exception cref="T:System.ArgumentException"/>
         </member>
         <member name="M:AlvinSoft.Cryptography.RSAKey.ExportPrivateKey">
             <summary>
-            Export the private key
+            Export the private key.
             </summary>
             <exception cref="T:System.ArgumentException"/>
         </member>
@@ -292,39 +201,135 @@
         </member>
         <member name="M:AlvinSoft.Cryptography.RSAKey.ExportPublicKey">
             <summary>
-            Export the public key
+            Export the public key.
             </summary>
             <exception cref="T:System.ArgumentException"/>
         </member>
         <member name="M:AlvinSoft.Cryptography.RSAKey.ImportPublicKey(System.Byte[])">
             <summary>
-            Import an exported public key
+            Import an exported public key.
             </summary>
-            <param name="key">A key exported with <see cref="M:AlvinSoft.Cryptography.RSAKey.ExportPublicKey"/></param>
+            <param name="key">A key exported with <see cref="M:AlvinSoft.Cryptography.RSAKey.ExportPublicKey"/>.</param>
             <exception cref="T:System.ArgumentException"/>
         </member>
         <member name="M:AlvinSoft.Cryptography.RSAKey.ExportPrivateKeyBase64">
             <summary>
-            Export the private key as a Base64 string (PEM)
+            Export the private key as a Base64 string (PEM).
             </summary>
-            <remarks>The string always starts with <c>-----BEGIN RSA PRIVATE KEY-----</c> and ends with <c>-----END RSA PRIVATE KEY-----</c></remarks>
-            <returns>The encoded Base64 string</returns>
+            <remarks>The string always starts with <c>-----BEGIN RSA PRIVATE KEY-----</c> and ends with <c>-----END RSA PRIVATE KEY-----</c> .</remarks>
+            <returns>The encoded Base64 string.</returns>
         </member>
         <member name="M:AlvinSoft.Cryptography.RSAKey.ImportPrivateKeyBase64(System.String)">
             <summary>
-            Import a Base64 encoded (PEM) private key
+            Import a Base64 encoded (PEM) private key.
             </summary>
         </member>
         <member name="M:AlvinSoft.Cryptography.RSAKey.ExportPublicKeyBase64">
             <summary>
-            Export the public key as a Base64 string
+            Export the public key as a Base64 string (PEM).
             </summary>
-            <remarks>The string always starts with <c>-----BEGIN RSA PUBLIC KEY-----</c> and ends with <c>-----END RSA PUBLIC KEY-----</c></remarks>
-            <returns>The encoded Base64 string</returns>
+            <remarks>The string always starts with <c>-----BEGIN RSA PUBLIC KEY-----</c> and ends with <c>-----END RSA PUBLIC KEY-----</c> .</remarks>
+            <returns>The encoded Base64 string.</returns>
         </member>
         <member name="M:AlvinSoft.Cryptography.RSAKey.ImportPublicKeyBase64(System.String)">
+            <summary>  
+            Import a Base64 encoded (PEM) public key.
+            </summary>  
+        </member>
+        <member name="T:AlvinSoft.Cryptography.SecurePassword">
+            <summary>Represents a password securely stored in memory.</summary>
+        </member>
+        <member name="P:AlvinSoft.Cryptography.SecurePassword.SecureString">
+            <summary>The <see cref="T:System.Security.SecureString"/> instance that is storing the password.</summary>
+        </member>
+        <member name="P:AlvinSoft.Cryptography.SecurePassword.Length">
+            <summary>The character password's length.</summary>
+        </member>
+        <member name="P:AlvinSoft.Cryptography.SecurePassword.IsEmpty">
+            <summary>Shorthand for <c>Length == 0</c>.</summary>
+        </member>
+        <member name="P:AlvinSoft.Cryptography.SecurePassword.PasswordUnicodeBytes">
+            <summary>Returns the unicode bytes of the password. Shorthand for <c>Encoding.Unicode.GetBytes(PasswordChars)</c>.</summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.AppendChar(System.Char)">
+            <summary>Append <paramref name="c"/> to this password.</summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.AppendString(System.String)">
+            <summary>Append <paramref name="s"/> to this password.</summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.#ctor">
+            <summary>Creates an empty instance.</summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.#ctor(System.String)">
+            <summary>Create a new instance and copy the <paramref name="password"/> chars to <see cref="P:AlvinSoft.Cryptography.SecurePassword.SecureString"/>.</summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.#ctor(System.Security.SecureString)">
+            <summary>Create a new instance and assign <paramref name="password"/> to <see cref="P:AlvinSoft.Cryptography.SecurePassword.SecureString"/>.</summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.ToString">
+            <summary>Copy the <see cref="P:AlvinSoft.Cryptography.SecurePassword.SecureString"/> character bytes to a string.</summary>
+            <returns>The string containing the <see cref="P:AlvinSoft.Cryptography.SecurePassword.SecureString"/> chars.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.Equals(System.Object)">
             <summary>
-            Import a Base64 encoded (PEM) public key
+            Check if the underlying unicode chars of this instance and <paramref name="obj"/> are identical.
+            </summary>
+            <remarks><paramref name="obj"/> can be a <see cref="T:AlvinSoft.Cryptography.SecurePassword"/>, <see cref="P:AlvinSoft.Cryptography.SecurePassword.SecureString"/>, <see cref="T:System.String"/> or <see cref="T:System.Char"/>[] instance.</remarks>
+            <param name="obj"/>
+            <returns>true if <paramref name="obj"/> is a text type and the char bytes are identical.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Equality(AlvinSoft.Cryptography.SecurePassword,AlvinSoft.Cryptography.SecurePassword)">
+            <returns>true if both sides contain the same unicode bytes; otherwise false.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Inequality(AlvinSoft.Cryptography.SecurePassword,AlvinSoft.Cryptography.SecurePassword)">
+            <returns>false if both sides contain the same unicode bytes; otherwise true.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Equality(AlvinSoft.Cryptography.SecurePassword,System.String)">
+            <returns>true if both sides contain the same unicode bytes; otherwise false.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Inequality(AlvinSoft.Cryptography.SecurePassword,System.String)">
+            <returns>false if both sides contain the same unicode bytes; otherwise true.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Equality(System.String,AlvinSoft.Cryptography.SecurePassword)">
+            <returns>true if both sides contain the same unicode bytes; otherwise false.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Inequality(System.String,AlvinSoft.Cryptography.SecurePassword)">
+            <returns>false if both sides contain the same unicode bytes; otherwise true.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Equality(System.Security.SecureString,AlvinSoft.Cryptography.SecurePassword)">
+            <returns>true if both sides contain the same unicode bytes; otherwise false.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Inequality(System.Security.SecureString,AlvinSoft.Cryptography.SecurePassword)">
+            <returns>false if both sides contain the same unicode bytes; otherwise true.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Equality(AlvinSoft.Cryptography.SecurePassword,System.Security.SecureString)">
+            <returns>true if both sides contain the same unicode bytes; otherwise false.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Inequality(AlvinSoft.Cryptography.SecurePassword,System.Security.SecureString)">
+            <returns>false if both sides contain the same unicode bytes; otherwise true.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Equality(System.Char[],AlvinSoft.Cryptography.SecurePassword)">
+            <returns>true if both sides contain the same unicode bytes; otherwise false.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Inequality(System.Char[],AlvinSoft.Cryptography.SecurePassword)">
+            <returns>false if both sides contain the same unicode bytes; otherwise true.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Equality(AlvinSoft.Cryptography.SecurePassword,System.Char[])">
+            <returns>true if both sides contain the same unicode bytes; otherwise false.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.op_Inequality(AlvinSoft.Cryptography.SecurePassword,System.Char[])">
+            <returns>false if both sides contain the same unicode bytes; otherwise true.</returns>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.Dispose">
+            <summary>Disposes of this instance.</summary>
+        </member>
+        <member name="M:AlvinSoft.Cryptography.SecurePassword.GetHashCode">
+            <summary>Serves as the default hash function.</summary>
+            <returns>A hash code for the current object.</returns>
+        </member>
+        <member name="T:Rdm">
+            <summary>
+            Shared, thread-safe <see cref="T:System.Random"/> instance.
             </summary>
         </member>
     </members>
