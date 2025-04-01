@@ -2,13 +2,10 @@
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <OutputType>Library</OutputType>
-    <RootNamespace>TcpMs</RootNamespace>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <AssemblyTitle>Tcp Made Simple</AssemblyTitle>
     <Product>TcpMadeSimple</Product>
     <Copyright>Copyright © AlvinSoft 2024</Copyright>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
     <NeutralLanguage>en-GB</NeutralLanguage>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
   </PropertyGroup>
