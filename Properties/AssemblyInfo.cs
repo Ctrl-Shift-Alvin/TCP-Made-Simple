@@ -1,7 +1,6 @@
-﻿using System.Resources;
-using System.Reflection;
-using System.Runtime.CompilerServices;
+﻿using System.Reflection;
 using System.Runtime.InteropServices;
+
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 #pragma warning disable CS7035

@@ -35,4 +35,7 @@
       <HintPath>ASEncryption\ASEncryptionTools.dll</HintPath>
     </Reference>
   </ItemGroup>
+  <ItemGroup>
+    <Folder Include="ASEncryption\" />
+  </ItemGroup>
 </Project>
