@@ -9,9 +9,11 @@
     <Copyright>Copyright © AlvinSoft 2024</Copyright>
     <NeutralLanguage>en-GB</NeutralLanguage>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
+    <GenerateDocumentationFile>True</GenerateDocumentationFile>
+    <DocumentationFile>bin\Release\TcpMadeSimple.xml</DocumentationFile>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <DocumentationFile>bin\Debug\TcpMadeSimple.xml</DocumentationFile>
+    <DocumentationFile></DocumentationFile>
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="Packages\**" />
