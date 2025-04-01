@@ -7,8 +7,6 @@
     <AssemblyTitle>Tcp Made Simple</AssemblyTitle>
     <Product>TcpMadeSimple</Product>
     <Copyright>Copyright © AlvinSoft 2024</Copyright>
-    <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>1.0.0.0</FileVersion>
     <NeutralLanguage>en-GB</NeutralLanguage>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
   </PropertyGroup>
