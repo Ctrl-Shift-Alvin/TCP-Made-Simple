@@ -375,7 +375,7 @@ partial class TcpMsClient {
                 return OperationResult.Disconnected;
 
             }
-
+            TcpMsClientInstance.OnPanic();
             return OperationResult.Succeeded;
         }
 

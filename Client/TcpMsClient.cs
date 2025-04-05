@@ -83,6 +83,8 @@ public partial class TcpMsClient(string hostname, ushort port) {
 
             Dbg.Log($"TcpMsClient: started obtain/dispatch threads");
 
+            OnConnected();
+
             return true;
 
         } else {
