@@ -226,6 +226,11 @@ partial class TcpMsClient {
 
                 encryptionIn = new(Settings.Password, saltIn.Data, ivIn.Data);
                 byte[] challengeIn = encryptionIn.DecryptBytes(encryptedChallengeIn.Data);
+                if (challengeIn == null) {
+                    //decryption failed
+                    await DispatchPackageAsync(new Package(Package.PackageTypes.Auth_Failure));
+                    return false;
+                }
                 byte[] challengeInHash = SHA512.HashData(challengeIn);
 
                 await DispatchPackageAsync(new Package(Package.PackageTypes.Auth_Response, Package.DataTypes.Blob, challengeInHash));
