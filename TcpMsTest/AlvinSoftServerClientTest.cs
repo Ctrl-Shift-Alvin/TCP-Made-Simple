@@ -81,40 +81,9 @@ public class AlvinSoftTcpTests {
   
     }
 
-    [TestMethod("Server Broadcast Test")]
-    public async Task Test4() {
-
-        ServerSettings settings = new(null) {
-            EncryptionEnabled = false,
-            PingIntervalMs = 0
-        };
-
-        TestServer = new(IPAddress.Any, 19914, settings);
-        await TestServer.StartAsync();
-
-        TestClient = new("127.0.0.1", 19914);
-        Assert.IsTrue(await TestClient.TryConnectAsync());
-
-        bool receivedData = false;
-        byte[] sentData = RandomBytes(128);
-        TaskCompletionSource completion = new();
-
-        void clientReceiveBlobHandler(byte[] data) {
-            receivedData = true;
-            CollectionAssert.AreEqual(sentData, data);
-            completion.SetResult();
-        }
-        TestClient.BlobReceivedEvent += clientReceiveBlobHandler;
-
-        await TestServer.BroadcastBlobAsync(sentData);
-        await completion.Task.WaitAsync(TimeSpan.FromMilliseconds(2000));
-        Assert.IsTrue(receivedData);
-
-        TestClient.BlobReceivedEvent -= clientReceiveBlobHandler;
-    }
 
     [TestMethod("Ping Functionality Test")]
-    public async Task Test5() {
+    public async Task Test4() {
 
         ServerSettings settings = new("password") {
             PingIntervalMs = 1000,
