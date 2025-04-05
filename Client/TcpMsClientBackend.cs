@@ -18,6 +18,15 @@ namespace AlvinSoft.TcpMs {
         public string Hostname { get; }
         /// <summary>The port used to connect to the server.</summary>
         public ushort Port { get; }
+        /// <summary>true if the server is currently connected; otherwise false.</summary>
+        public bool IsConnected {
+            get {
+                if (ClientInstance == null)
+                    return false;
+                else
+                    return ClientInstance.IsConnected;
+            }
+        }
         private Client ClientInstance { get; set; }
 
         /// <summary>The server's settings used to communicate.</summary>
@@ -48,6 +57,7 @@ namespace AlvinSoft.TcpMs {
             private ServerSettings Settings => TcpMsClientInstance.Settings;
 
             private AesEncryption Encryption => TcpMsClientInstance.Encryption;
+            internal bool IsConnected => TcpClientInstance.Connected;
 
             #region Overrides
             protected override CancellationToken TimeoutToken => new CancellationTokenSource(TcpMsClientInstance.Settings.ReceiveTimeoutMs).Token;
