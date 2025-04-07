@@ -12,7 +12,10 @@ using System.Text;
 
 namespace AlvinSoft.TcpMs.Packages;
 
-/// <summary>Represents the settings of a server</summary>
+/// <summary>Represents the settings of a server.</summary>
+public class ServerSettings {
+
+    /// <summary>Represents the default settings of a server.</summary>
 /// <remarks>Default values:
 /// <code>
 /// Version = CurrentVersion,
@@ -28,7 +31,14 @@ namespace AlvinSoft.TcpMs.Packages;
 /// Version, ConnectionTestTries, EncryptionEnabled
 /// </code>
 /// </remarks>
-public class ServerSettings(string password) {
+    public ServerSettings(string password) {
+        Password = new(password ?? string.Empty);
+
+        if (PingIntervalMs > 1) {
+            if (PingTimeoutMs >= PingIntervalMs)
+                ServerSettingsException.ThrowInvalidPingSettings();
+        }
+    }
 
     #region Public_Fields
     /// <summary>The current server version</summary>
@@ -47,7 +57,7 @@ public class ServerSettings(string password) {
 
     /// <summary>The password used for encryption.</summary>
     /// <remarks>Irrelevant if <see cref="EncryptionEnabled"/> is false.</remarks>
-    public SecurePassword Password { get; set; } = new(password ?? string.Empty);
+    public SecurePassword Password { get; set; }
 
     /// <summary>The maximum amount of clients allowed at the same time.</summary>
     /// <remarks>This field is not disclosed to the clients</remarks>
@@ -75,13 +85,7 @@ public class ServerSettings(string password) {
     public void Update(byte[] data) {
 
         //4Version, 1ConnectionTestTries, 1EncryptionEnabled
-
-        int version = BinaryPrimitives.ReadInt32BigEndian(data);
-
-        if (version != CurrentVersion)
-            throw new ServerVersionException(version);
-
-        Version = version;
+        Version = BinaryPrimitives.ReadInt32BigEndian(data);
         ConnectionTestTries = data[4];
         EncryptionEnabled = data[5] == 1;
 
@@ -106,13 +110,6 @@ public class ServerSettings(string password) {
 
     }
 
-
-    [Serializable]
-#pragma warning disable CS1591
-    public class ServerVersionException(int serverVersion) : Exception($"The server you have connected to runs on version {serverVersion}, while your client is version {CurrentVersion}") { }
-#pragma warning restore CS1591
-
-
     /// <summary>Represents settings that are unknown and/or not yet retrieved</summary>
     /// <value><code>
     /// public static ServerSettings None => new() {
@@ -123,6 +120,20 @@ public class ServerSettings(string password) {
         Version = -1
     };
 
+
+    /// <summary>
+    /// Thrown when an invalid <see cref="ServerSettings"/> instance is initialized.
+    /// </summary>
+    [Serializable]
+    public class ServerSettingsException : Exception {
+        internal ServerSettingsException() : base("Invalid server settings.") { }
+        internal ServerSettingsException(string message) : base(message) { }
+        [DoesNotReturn]
+        internal static void ThrowInvalidPingSettings() {
+            throw new ServerSettingsException("The ping interval cannot be lower than the ping timeout.");
+}
+
+    }
 
 }
 

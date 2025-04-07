@@ -76,9 +76,6 @@ partial class TcpMsServer(IPAddress ip, ushort port, ServerSettings settings) {
             if (Settings.PingIntervalMs < 1)
                 return;
 
-            if (Settings.PingTimeoutMs >= Settings.PingIntervalMs)
-                throw new ArgumentException("The ping interval cannot be lower than the ping timeout.", nameof(Settings.PingTimeoutMs));
-
             Task.Run(async () => {
 
                 PingCancel = new();
