@@ -348,6 +348,7 @@ public readonly struct Package {
 
 internal abstract class PackageHandler(NetworkStream targetStream) {
 
+    #region Fields
     private NetworkStream Stream { get; set; } = targetStream;
 
     protected virtual CancellationToken TimeoutToken => new CancellationTokenSource(500).Token;
@@ -389,6 +390,8 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
         Disconnected
     }
 
+    #endregion
+
     #region Abstract/Virtual
 
     /// <summary>
@@ -401,7 +404,7 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
     protected abstract void OnReceivedDataPackage(Package package);
 
     /// <summary>
-    /// Override to handle errors. Return true if base should resume obtaining/dispatching threads; otherwise false.
+    /// Override to handle errors. Decides how the loops should continue.
     /// </summary>
     protected abstract Task OnError(Errors error);
 
@@ -427,20 +430,13 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
 
         while (!ObtainHandlerCancel.IsCancellationRequested) {
 
-            try {
-                ObtainHandlerPause.Wait(ObtainHandlerCancel.Token);
-                await ObtainHandlerSync.WaitAsync(ObtainHandlerCancel.Token);
-            } catch (OperationCanceledException) {
-                return;
-            }
-
             Package incoming;
             try {
 
-                incoming = await ObtainPackageAsync(ObtainHandlerCancel.Token);
+                ObtainHandlerPause.Wait(ObtainHandlerCancel.Token);
+                await ObtainHandlerSync.WaitAsync(ObtainHandlerCancel.Token);
 
-                if (!incoming.IsEmpty)
-                    Dbg.Log($"PackageHandler.ObtainHandler(): Obtained package (length {incoming.DataLength})");
+                incoming = await ObtainPackageAsync(ObtainHandlerCancel.Token);
 
                 if (incoming.IsInternalPackage)
                     await OnReceivedInternalPackage(incoming);
@@ -454,7 +450,7 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
             } catch (InvalidOperationException) {
 
                 await OnError(Errors.CannotRead);
-                continue;
+                continue; //OnError decides what to do, so simply allow the thread to continue naturally.
 
             } catch (TcpMsUnexpectedPackageException) {
 
@@ -468,6 +464,7 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
 
             } finally {
 
+                if (ObtainHandlerSync.CurrentCount == 0)
                 ObtainHandlerSync.Release();
 
             }
@@ -527,10 +524,9 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
     /// <returns>A task that finishes when all threads have finished.</returns>
     public async Task StopObtainAsync() {
 
-        if (IsObtainRunning())
+        if (!IsObtainRunning())
             return;
 
-        //cancel the receive handler
         await ObtainHandlerCancel.CancelAsync();
 
         //wait for the receive handler to finish, then wait for the queues to clear
@@ -568,20 +564,20 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
                         await DispatchPackageAsync(outgoing);
                         outgoing.NotifySent();
 
-                        Dbg.Log("PackageHandler.DispatchHandler(): Dispatched package");
-
                     } catch (InvalidOperationException) {
 
                         await OnError(Errors.CannotWrite);
 
                     }
                 }
+
             } catch (OperationCanceledException) {
 
-                return;
+                break;
 
             } finally {
 
+                if (DispatchHandlerSync.CurrentCount == 0)
                 DispatchHandlerSync.Release();
             }
 
