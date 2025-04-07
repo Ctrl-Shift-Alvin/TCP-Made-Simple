@@ -419,7 +419,7 @@ partial class TcpMsClient {
         public async Task Manual_DispatchDisconnect() {
             try {
                 await DispatchPackageAsync(new Package(Package.PackageTypes.DisconnectRequest));
-            } finally { }
+            } catch { }
         }
 
         #endregion
