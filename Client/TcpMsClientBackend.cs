@@ -432,12 +432,7 @@ partial class TcpMsClient {
     private async void HandleDisconnect() {
         await ClientInstance.StopAllAsync();
         Close();
-        OnDisconnect();
-    }
-
-    /// <summary>Updates the server settings using <paramref name="data"/>.</summary>
-    private void HandleNewSettings(Package data) {
-        Settings.Update(data.Data);
+        OnDisconnected();
     }
 
     private void EncryptIfNeccessary(ref byte[] buffer) {

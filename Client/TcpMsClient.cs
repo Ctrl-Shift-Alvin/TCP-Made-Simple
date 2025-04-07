@@ -22,15 +22,15 @@ public partial class TcpMsClient(string hostname, ushort port) {
     public delegate void Disconnected();
     public delegate void Panic();
 
-    public event Connected ConnectEvent;
-    public event Disconnected DisconnectEvent;
+    public event Connected ConnectedEvent;
+    public event Disconnected DisconnectedEvent;
     /// <summary>
     /// Triggered when this client had an error and resolved it. Use it to resend potentially important data that was lost.
     /// </summary>
     public event Panic PanicEvent;
 
-    private void OnConnected() => ConnectEvent?.Invoke();
-    private void OnDisconnect() => DisconnectEvent?.Invoke();
+    private void OnConnected() => ConnectedEvent?.Invoke();
+    private void OnDisconnected() => DisconnectedEvent?.Invoke();
     private void OnPanic() => PanicEvent?.Invoke();
 
 
@@ -105,6 +105,7 @@ public partial class TcpMsClient(string hostname, ushort port) {
         await ClientInstance.StopAllAsync();
         await ClientInstance.Manual_DispatchDisconnect();
         Close();
+        OnDisconnected();
 
     }
 
