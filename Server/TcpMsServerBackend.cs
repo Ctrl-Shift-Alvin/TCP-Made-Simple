@@ -84,6 +84,9 @@ partial class TcpMsServer(IPAddress ip, ushort port, ServerSettings settings) {
 
                     await Task.Delay(Settings.PingIntervalMs - Settings.PingTimeoutMs, PingCancel.Token);
 
+                    if (PongStatus) //do not send ping if a data package was already received
+                        continue;
+
                     await SendAsync(new Package(Package.PackageTypes.Ping));
 
                     Dbg.Log($"TcpMsServer.Client ID={ReadableID}: Sent ping");
@@ -150,6 +153,7 @@ partial class TcpMsServer(IPAddress ip, ushort port, ServerSettings settings) {
                 break;
 
             }
+            PongStatus = true; //do not need to ping if receiving packages from client
 
         }
 
