@@ -16,21 +16,21 @@ namespace AlvinSoft.TcpMs.Packages;
 public class ServerSettings {
 
     /// <summary>Represents the default settings of a server.</summary>
-/// <remarks>Default values:
-/// <code>
-/// Version = CurrentVersion,
-/// EncryptionEnabled = true,
-/// ConnectionTestTries = 3,
-/// MaxClients = 15,
-/// MaxPanicsPerClient = 5,
-/// PingIntervalMs = 10000,
-/// PingTimeoutMs = 8000
-/// </code>
-/// These values are exported when calling <see cref="GetBytes"/>, the rest aren't:
-/// <code>
-/// Version, ConnectionTestTries, EncryptionEnabled
-/// </code>
-/// </remarks>
+    /// <remarks>Default values:
+    /// <code>
+    /// Version = CurrentVersion,
+    /// EncryptionEnabled = true,
+    /// ConnectionTestTries = 3,
+    /// MaxClients = 15,
+    /// MaxPanicsPerClient = 5,
+    /// PingIntervalMs = 10000,
+    /// PingTimeoutMs = 8000
+    /// </code>
+    /// These values are exported when calling <see cref="GetBytes"/>, the rest aren't:
+    /// <code>
+    /// Version, ConnectionTestTries, EncryptionEnabled
+    /// </code>
+    /// </remarks>
     public ServerSettings(string password) {
         Password = new(password ?? string.Empty);
 
@@ -131,7 +131,7 @@ public class ServerSettings {
         [DoesNotReturn]
         internal static void ThrowInvalidPingSettings() {
             throw new ServerSettingsException("The ping interval cannot be lower than the ping timeout.");
-}
+        }
 
     }
 
@@ -465,7 +465,7 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
             } finally {
 
                 if (ObtainHandlerSync.CurrentCount == 0)
-                ObtainHandlerSync.Release();
+                    ObtainHandlerSync.Release();
 
             }
 
@@ -578,7 +578,7 @@ internal abstract class PackageHandler(NetworkStream targetStream) {
             } finally {
 
                 if (DispatchHandlerSync.CurrentCount == 0)
-                DispatchHandlerSync.Release();
+                    DispatchHandlerSync.Release();
             }
 
         }

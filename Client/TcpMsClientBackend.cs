@@ -428,7 +428,7 @@ partial class TcpMsClient {
     }
 
     #region Handlers
-    /// <summary>Closes a connected client and calls <c>OnDisconnect</c></summary>
+    /// <summary>Closes a connected client and calls <c>OnDisconnect</c>.</summary>
     private async void HandleDisconnect() {
         await ClientInstance.StopAllAsync();
         Close();
