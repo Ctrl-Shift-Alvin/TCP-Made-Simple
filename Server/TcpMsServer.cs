@@ -91,6 +91,8 @@ public partial class TcpMsServer {
         Listener?.Stop();
         Listener?.Dispose();
 
+        IsStarted = false;
+
     }
     #endregion
 
