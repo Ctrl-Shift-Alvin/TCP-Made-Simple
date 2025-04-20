@@ -19,8 +19,6 @@ namespace AlvinSoft.TcpMs {
     /// </summary>
     partial class TcpMsServer {
 
-        
-
         #region Fields
 
         private TcpListener Listener { get; set; }

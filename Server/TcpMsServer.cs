@@ -106,6 +106,8 @@ namespace AlvinSoft.TcpMs {
             Listener?.Stop();
             Listener.Stop();
 
+            IsStarted = false;
+
         }
 
         #endregion
