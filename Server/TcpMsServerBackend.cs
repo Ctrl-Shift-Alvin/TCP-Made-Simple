@@ -367,6 +367,11 @@ namespace AlvinSoft.TcpMs {
 
                     AesEncryption encryptionIn = new AesEncryption(Settings.Password, saltIn.Data, ivIn.Data);
                     byte[] challengeIn = encryptionIn.DecryptBytes(encryptedChallengeIn.Data);
+                    if (challengeIn == null) {
+                        //decryption failed
+                        await DispatchPackageAsync(new Package(Package.PackageTypes.Auth_Failure));
+                        return false;
+                    }
                     byte[] challengeInHash;
                     using (SHA512 sha = SHA512.Create()) {
                         challengeInHash = sha.ComputeHash(challengeIn);
