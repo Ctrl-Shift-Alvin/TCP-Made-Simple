@@ -33,6 +33,11 @@ namespace AlvinSoft.TcpMs.Packages {
         /// </remarks>
         public ServerSettings(string password) {
             Password = new SecurePassword(password ?? string.Empty);
+
+            if (PingIntervalMs > 1) {
+                if (PingTimeoutMs >= PingIntervalMs)
+                    ServerSettingsException.ThrowInvalidPingSettings();
+            }
         }
 
         #region Public_Fields
@@ -80,13 +85,7 @@ namespace AlvinSoft.TcpMs.Packages {
         public void Update(byte[] data) {
 
             //4Version, 1ConnectionTestTries, 1EncryptionEnabled
-
-            int version = BinaryPrimitives.ReadInt32BigEndian(data);
-
-            if (version != CurrentVersion)
-                throw new ServerVersionException(version);
-
-            Version = version;
+            Version = BinaryPrimitives.ReadInt32BigEndian(data);
             ConnectionTestTries = data[4];
             EncryptionEnabled = data[5] == 1;
 
@@ -111,19 +110,6 @@ namespace AlvinSoft.TcpMs.Packages {
 
         }
 
-
-        /// <summary>
-        /// Thrown when the server version is different from the client's version.
-        /// </summary>
-        [Serializable]
-        public class ServerVersionException : Exception {
-            /// <summary>
-            /// Thrown when the server version is different from the client's version.
-            /// </summary>
-            public ServerVersionException(int serverVersion) : base($"The server you have connected to runs on version {serverVersion}, while your client is version {CurrentVersion}") { }
-        }
-
-
         /// <summary>Represents settings that are unknown and/or not yet retrieved.</summary>
         /// <value><code>
         /// public static ServerSettings None => new() {
@@ -134,6 +120,21 @@ namespace AlvinSoft.TcpMs.Packages {
             Version = -1
         };
 
+
+        /// <summary>
+        /// Thrown when an invalid <see cref="ServerSettings"/> instance is initialized.
+        /// </summary>
+        [Serializable]
+        public class ServerSettingsException : Exception {
+            internal ServerSettingsException() : base("Invalid server settings.") { }
+            internal ServerSettingsException(string message) : base(message) { }
+            [DoesNotReturn]
+            internal static void ThrowInvalidPingSettings() {
+                throw new ServerSettingsException("The ping interval cannot be lower than the ping timeout.");
+            }
+
+
+        }
 
     }
 
