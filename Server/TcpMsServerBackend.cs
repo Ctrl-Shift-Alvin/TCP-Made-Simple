@@ -89,6 +89,9 @@ namespace AlvinSoft.TcpMs {
 
                         await Task.Delay(Settings.PingIntervalMs - Settings.PingTimeoutMs, PingCancel.Token);
 
+                        if (PongStatus) //do not send ping if a data package was already received
+                            continue;
+
                         await SendAsync(new Package(Package.PackageTypes.Ping));
 
                         Dbg.Log($"TcpMsServer.Client ID={ReadableID}: Sent ping");
@@ -155,6 +158,7 @@ namespace AlvinSoft.TcpMs {
                     break;
 
                 }
+                PongStatus = true; //do not need to ping if receiving packages from client
 
             }
 
