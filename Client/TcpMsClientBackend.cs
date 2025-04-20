@@ -230,6 +230,11 @@ namespace AlvinSoft.TcpMs {
 
                     encryptionIn = new AesEncryption(Settings.Password, saltIn.Data, ivIn.Data);
                     byte[] challengeIn = encryptionIn.DecryptBytes(encryptedChallengeIn.Data);
+                    if (challengeIn == null) {
+                        //decryption failed
+                        await DispatchPackageAsync(new Package(Package.PackageTypes.Auth_Failure));
+                        return false;
+                    }
                     byte[] challengeInHash;
                     using (SHA512 sha = SHA512.Create()) {
                         challengeInHash = sha.ComputeHash(challengeIn);
@@ -386,6 +391,7 @@ namespace AlvinSoft.TcpMs {
 
                 }
 
+                TcpMsClientInstance.OnPanic();
                 return OperationResult.Succeeded;
             }
 
@@ -424,7 +430,7 @@ namespace AlvinSoft.TcpMs {
             public async Task Manual_DispatchDisconnect() {
                 try {
                     await DispatchPackageAsync(new Package(Package.PackageTypes.DisconnectRequest));
-                } finally { }
+                } catch { }
             }
 
             #endregion
@@ -433,16 +439,11 @@ namespace AlvinSoft.TcpMs {
         }
 
         #region Handlers
-        /// <summary>Closes a connected client and calls <c>OnDisconnect</c></summary>
+        /// <summary>Closes a connected client and calls <c>OnDisconnect</c>.</summary>
         private async void HandleDisconnect() {
             await ClientInstance.StopAllAsync();
             Close();
-            OnDisconnect();
-        }
-
-        /// <summary>Updates the server settings using <paramref name="data"/>.</summary>
-        private void HandleNewSettings(Package data) {
-            Settings.Update(data.Data);
+            OnDisconnected();
         }
 
         private void EncryptIfNeccessary(ref byte[] buffer) {

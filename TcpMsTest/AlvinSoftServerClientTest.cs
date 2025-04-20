@@ -60,10 +60,10 @@ public class AlvinSoftTcpTests {
             PingIntervalMs = 0
         };
 
-        TestServer = new(IPAddress.Any, 19913, settings);
+        TestServer = new(IPAddress.Any, 19912, settings);
         await TestServer.StartAsync();
 
-        TestClient = new("127.0.0.1", 19913);
+        TestClient = new("127.0.0.1", 19912);
         Assert.IsTrue(await TestClient.TryConnectAsync());
 
         TaskCompletionSource completion = new();
@@ -78,12 +78,147 @@ public class AlvinSoftTcpTests {
 
         TestServer.ClientDisconnectedEvent -= OnDisconnect;
         Assert.IsTrue(TestServer.ClientCount == 0);
-  
+
     }
 
+    [TestMethod("General Test")]
+    public async Task Test4() {
+
+        string pass = "password";
+        ServerSettings settings = new(pass) {
+            PingIntervalMs = 1000,
+            PingTimeoutMs = 500
+        };
+
+        bool serverClientConnected = false;
+        bool serverClientDisconnected = false;
+        bool clientConnected = false;
+        bool clientDisconnected = false;
+        void AllFalse() => Assert.IsTrue(!serverClientConnected && !serverClientDisconnected && !clientConnected && !clientDisconnected);
+
+        TaskCompletionSource completion = new(), completion1 = new();
+        TestServer = new(IPAddress.Any, 19913, settings);
+        TestServer.ClientConnectedEvent += (byte[] _) => {
+            Assert.IsTrue(TestServer.ClientCount == 1);
+            serverClientConnected = true;
+        };
+        TestServer.ClientDisconnectedEvent += (byte[] _) => {
+            Assert.IsTrue(TestServer.ClientCount == 0);
+            serverClientDisconnected = true;
+        };
+        TestServer.ClientPanicEvent += (byte[] _) => {
+            Assert.Fail("Panic");
+        };
+
+        TestClient = new("127.0.0.1", 19913);
+        TestClient.ConnectedEvent += () => {
+            Assert.IsTrue(TestClient.IsConnected);
+            clientConnected = true;
+        };
+        TestClient.DisconnectedEvent += () => {
+            Assert.IsFalse(TestClient.IsConnected);
+            clientDisconnected = true;
+        };
+        TestClient.PanicEvent += () => {
+            Assert.Fail("Panic");
+        };
+
+        await TestServer.StartAsync();
+
+        //connect without password
+        await TestClient.TryConnectAsync();
+
+        Assert.IsFalse(TestClient.IsConnected);
+        Assert.IsTrue(TestServer.ClientCount == 0);
+        AllFalse();
+
+        //connect with wrong password
+        await TestClient.TryConnectAsync(pass + 's');
+
+        Assert.IsFalse(TestClient.IsConnected);
+        Assert.IsTrue(TestServer.ClientCount == 0);
+        AllFalse();
+
+        //connect with correct password
+        await TestClient.TryConnectAsync(pass);
+
+        Assert.IsTrue(serverClientConnected);
+        Assert.IsTrue(clientConnected);
+        clientConnected = false;
+        serverClientConnected = false;
+        AllFalse();
+
+        //test data exchange
+        await TestSendReceive();
+
+        //test disconnect
+        void del1(byte[] _) => completion.SetResult();
+        TestServer.ClientDisconnectedEvent += del1;
+
+        await TestClient.DisconnectAsync();
+        await Task.WhenAny(Task.Delay(1000), completion.Task);
+
+        TestServer.ClientDisconnectedEvent -= del1;
+
+        Assert.IsTrue(clientDisconnected);
+        Assert.IsTrue(serverClientDisconnected);
+        clientDisconnected = false;
+        serverClientDisconnected = false;
+        AllFalse();
+
+        //reconnect
+        await TestClient.TryConnectAsync(pass);
+
+        Assert.IsTrue(clientConnected);
+        Assert.IsTrue(serverClientConnected);
+        clientConnected = false;
+        serverClientConnected = false;
+        AllFalse();
+
+        //disconnect from server
+        completion = new();
+        TestClient.DisconnectedEvent += completion.SetResult;
+
+        await TestServer.DisconnectClient(TestServer.ClientIDs.First());
+        await Task.WhenAny(Task.Delay(1000), completion.Task);
+
+        TestClient.DisconnectedEvent -= completion.SetResult;
+
+        await Task.Delay(100);
+        Assert.IsTrue(clientDisconnected);
+        Assert.IsTrue(serverClientDisconnected);
+        clientDisconnected = false;
+        serverClientDisconnected = false;
+        AllFalse();
+
+        //reconnect
+        await TestClient.TryConnectAsync(pass);
+
+        Assert.IsTrue(clientConnected);
+        Assert.IsTrue(serverClientConnected);
+        clientConnected = false;
+        serverClientConnected = false;
+
+        //test ping timeout
+        completion = new();
+        TestServer.ClientDisconnectedEvent += del1;
+
+        TestClient.Close();
+        await Task.WhenAny(Task.Delay(settings.PingIntervalMs + settings.PingTimeoutMs + 100), completion.Task); //wait for ping timeout
+
+        TestServer.ClientDisconnectedEvent -= del1;
+
+        Assert.IsTrue(clientDisconnected);
+        Assert.IsTrue(serverClientDisconnected);
+        clientDisconnected = false;
+        serverClientDisconnected = false;
+        AllFalse();
+
+
+    }
 
     [TestMethod("Ping Functionality Test")]
-    public async Task Test4() {
+    public async Task Test5() {
 
         ServerSettings settings = new("password") {
             PingIntervalMs = 1000,
@@ -95,8 +230,6 @@ public class AlvinSoftTcpTests {
 
         TestClient = new("127.0.0.1", 19912);
         Assert.IsTrue(await TestClient.TryConnectAsync("password"));
-
-        await Task.Delay(settings.PingIntervalMs * 4);
 
         Assert.IsTrue(TestServer.ClientCount == 1);
 
@@ -113,6 +246,7 @@ public class AlvinSoftTcpTests {
         Assert.IsTrue(completion.Task.IsCompleted);
 
         TestServer.ClientDisconnectedEvent -= OnDisconnect;
+
     }
 
     [TestCleanup]

@@ -79,9 +79,6 @@ namespace AlvinSoft.TcpMs {
                 if (Settings.PingIntervalMs < 1)
                     return;
 
-                if (Settings.PingTimeoutMs >= Settings.PingIntervalMs)
-                    throw new ArgumentException("The ping interval cannot be lower than the ping timeout.", nameof(Settings.PingTimeoutMs));
-
                 Task.Run(async () => {
 
                     PingCancel = new CancellationTokenSource();
@@ -89,6 +86,9 @@ namespace AlvinSoft.TcpMs {
                     while (!PingCancel.IsCancellationRequested) {
 
                         await Task.Delay(Settings.PingIntervalMs - Settings.PingTimeoutMs, PingCancel.Token);
+
+                        if (PongStatus) //do not send ping if a data package was already received
+                            continue;
 
                         await SendAsync(new Package(Package.PackageTypes.Ping));
 
@@ -156,6 +156,7 @@ namespace AlvinSoft.TcpMs {
                     break;
 
                 }
+                PongStatus = true; //do not need to ping if receiving packages from client
 
             }
 
@@ -365,6 +366,11 @@ namespace AlvinSoft.TcpMs {
 
                     AesEncryption encryptionIn = new AesEncryption(Settings.Password, saltIn.Data, ivIn.Data);
                     byte[] challengeIn = encryptionIn.DecryptBytes(encryptedChallengeIn.Data);
+                    if (challengeIn == null) {
+                        //decryption failed
+                        await DispatchPackageAsync(new Package(Package.PackageTypes.Auth_Failure));
+                        return false;
+                    }
                     byte[] challengeInHash;
                     using (SHA512 sha = SHA512.Create()) {
                         challengeInHash = sha.ComputeHash(challengeIn);
