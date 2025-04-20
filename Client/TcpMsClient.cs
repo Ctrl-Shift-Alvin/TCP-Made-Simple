@@ -85,6 +85,8 @@ namespace AlvinSoft.TcpMs {
 
                 Dbg.Log($"TcpMsClient: Started client handler");
 
+                OnConnected();
+
                 return true;
 
             } else {

@@ -386,6 +386,7 @@ namespace AlvinSoft.TcpMs {
 
                 }
 
+                TcpMsClientInstance.OnPanic();
                 return OperationResult.Succeeded;
             }
 
