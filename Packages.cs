@@ -418,7 +418,7 @@ namespace AlvinSoft.TcpMs.Packages {
         protected abstract void OnReceivedDataPackage(Package package);
 
         /// <summary>
-        /// Override to handle errors. Return true if base should resume obtaining/dispatching threads; otherwise false.
+        /// Override to handle errors. Decides how the loops should continue.
         /// </summary>
         protected abstract Task OnError(Errors error);
 
@@ -444,20 +444,13 @@ namespace AlvinSoft.TcpMs.Packages {
 
             while (!ObtainHandlerCancel.IsCancellationRequested) {
 
-                try {
-                    ObtainHandlerPause.Wait(ObtainHandlerCancel.Token);
-                    await ObtainHandlerSync.WaitAsync(ObtainHandlerCancel.Token);
-                } catch (OperationCanceledException) {
-                    return;
-                }
-
                 Package incoming;
                 try {
 
-                    incoming = await ObtainPackageAsync(ObtainHandlerCancel.Token);
+                    ObtainHandlerPause.Wait(ObtainHandlerCancel.Token);
+                    await ObtainHandlerSync.WaitAsync(ObtainHandlerCancel.Token);
 
-                    if (!incoming.IsEmpty)
-                        Dbg.Log($"PackageHandler.ObtainHandler(): Obtained package (length {incoming.DataLength})");
+                    incoming = await ObtainPackageAsync(ObtainHandlerCancel.Token);
 
                     if (incoming.IsInternalPackage)
                         await OnReceivedInternalPackage(incoming);
@@ -471,7 +464,7 @@ namespace AlvinSoft.TcpMs.Packages {
                 } catch (InvalidOperationException) {
 
                     await OnError(Errors.CannotRead);
-                    continue;
+                    continue; //OnError decides what to do, so simply allow the thread to continue naturally.
 
                 } catch (TcpMsUnexpectedPackageException) {
 
@@ -485,7 +478,8 @@ namespace AlvinSoft.TcpMs.Packages {
 
                 } finally {
 
-                    ObtainHandlerSync.Release();
+                    if (ObtainHandlerSync.CurrentCount == 0)
+                        ObtainHandlerSync.Release();
 
                 }
 
@@ -544,10 +538,9 @@ namespace AlvinSoft.TcpMs.Packages {
         /// <returns>A task that finishes when all threads have finished.</returns>
         public async Task StopObtainAsync() {
 
-            if (IsObtainRunning())
+            if (!IsObtainRunning())
                 return;
 
-            //cancel the receive handler
             ObtainHandlerCancel.Cancel();
 
             //wait for the receive handler to finish, then wait for the queues to clear
@@ -585,21 +578,21 @@ namespace AlvinSoft.TcpMs.Packages {
                             await DispatchPackageAsync(outgoing);
                             outgoing.NotifySent();
 
-                            Dbg.Log("PackageHandler.DispatchHandler(): Dispatched package");
-
                         } catch (InvalidOperationException) {
 
                             await OnError(Errors.CannotWrite);
 
                         }
                     }
+
                 } catch (OperationCanceledException) {
 
-                    return;
+                    break;
 
                 } finally {
 
-                    DispatchHandlerSync.Release();
+                    if (DispatchHandlerSync.CurrentCount == 0)
+                        DispatchHandlerSync.Release();
                 }
 
             }
