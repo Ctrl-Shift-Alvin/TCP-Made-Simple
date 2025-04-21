@@ -200,6 +200,10 @@ namespace AlvinSoft.TcpMs {
                 TcpMsClientInstance.HandleDisconnect();
 
             }
+            public override void Close() {
+                base.Close();
+                TcpClientInstance.Dispose();
+            }
             #endregion
 
             #region Manual
