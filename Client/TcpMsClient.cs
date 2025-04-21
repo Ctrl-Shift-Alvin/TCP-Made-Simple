@@ -67,6 +67,7 @@ namespace AlvinSoft.TcpMs {
                 if (!tcp.Connected)
                     throw new Exception();
 
+                IsConnected = true;
                 Dbg.Log($"TcpMsClient: Connected to server");
 
             } catch {
@@ -116,6 +117,7 @@ namespace AlvinSoft.TcpMs {
         public void Close() {
             ClientInstance?.Close();
             Encryption?.Dispose();
+            IsConnected = false;
         }
         #endregion
 
