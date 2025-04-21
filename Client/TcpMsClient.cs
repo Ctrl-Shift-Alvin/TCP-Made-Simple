@@ -72,6 +72,7 @@ namespace AlvinSoft.TcpMs {
             } catch {
 
                 Dbg.Log($"TcpMsClient: Could not connect to server");
+                Close();
                 return false;
             }
 
