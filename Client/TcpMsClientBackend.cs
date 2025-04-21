@@ -196,6 +196,10 @@ partial class TcpMsClient {
             TcpMsClientInstance.HandleDisconnect();
 
         }
+        public override void Close() {
+            base.Close();
+            TcpClientInstance.Close();
+        }
         #endregion
 
         #region Manual
