@@ -19,14 +19,8 @@ partial class TcpMsClient {
     /// <summary>The port used to connect to the server.</summary>
     public ushort Port => port;
     /// <summary>true if the server is currently connected; otherwise false.</summary>
-    public bool IsConnected {
-        get {
-            if (ClientInstance == null)
-                return false;
-            else
-                return ClientInstance.IsConnected;
-        }
-    }
+    public bool IsConnected { get; protected set; }
+
     internal Client ClientInstance { get; set; }
 
     /// <summary>The server's settings used to communicate.</summary>

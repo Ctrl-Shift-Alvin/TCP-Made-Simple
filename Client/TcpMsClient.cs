@@ -81,6 +81,7 @@ public partial class TcpMsClient(string hostname, ushort port) {
 
             ClientInstance.StartAll();
 
+            IsConnected = true;
             Dbg.Log($"TcpMsClient: started obtain/dispatch threads");
 
             OnConnected();
@@ -114,6 +115,7 @@ public partial class TcpMsClient(string hostname, ushort port) {
     public void Close() {
         ClientInstance?.Close();
         Encryption?.Dispose();
+        IsConnected = false;
     }
 
     #region Send_Methods
